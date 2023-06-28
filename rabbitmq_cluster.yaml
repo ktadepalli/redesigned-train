@@ -1,0 +1,93 @@
+#exposes ports 5672 (AMQP -Advanced Message Queuing Protocol) and 15672 (RabbitMQ management UI) for the RabbitMQ cluster
+#UmFiYml0NjQK - Rabbit64(base decoded)
+#added statefulsets to follow standard approach along with resource limits, rediness-liveliness probes
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq-service
+  labels:
+    app: rabbitmq
+spec:
+  type: NodePort
+  ports:
+    - name: amqp
+      port: 5672
+      targetPort: 5672
+      nodePort: 30000  # Define the desired NodePort value
+    - name: management
+      port: 15672
+      targetPort: 15672
+      nodePort: 30001  # Define the desired NodePort value
+  selector:
+    app: rabbitmq
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: rabbitmq-cluster
+spec:
+  replicas: 3  # Number of RabbitMQ cluster nodes
+  serviceName: rabbitmq-service
+  selector:
+    matchLabels:
+      app: rabbitmq
+  template:
+    metadata:
+      labels:
+        app: rabbitmq
+    spec:
+      containers:
+        - name: rabbitmq
+          image: rabbitmq:3.8.16-management
+          resources:
+            limits:
+              cpu: 500m
+              memory: 512Mi
+            requests:
+              cpu: 100m
+              memory: 256Mi
+          ports:
+            - containerPort: 5672 
+            - containerPort: 15672
+          env:
+            - name: RABBITMQ_ERLANG_COOKIE
+              valueFrom:
+                secretKeyRef:
+                  name: rabbitmq-secret
+                  key: rabbitmq-erlang-cookie
+          readinessProbe:
+            exec:
+              command:
+                - /bin/bash
+                - -c
+                - rabbitmq-diagnostics ping
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            exec:
+              command:
+                - /bin/bash
+                - -c
+                - rabbitmq-diagnostics ping
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          volumeMounts:
+            - name: rabbitmq-data
+              mountPath: /var/lib/rabbitmq
+  volumeClaimTemplates:
+    - metadata:
+        name: rabbitmq-data
+      spec:
+        accessModes: [ "ReadWriteOnce" ]
+        resources:
+          requests:
+            storage: 10Gi
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: rabbitmq-secret
+type: Opaque
+data:
+  rabbitmq-erlang-cookie: UmFiYml0NjQK
