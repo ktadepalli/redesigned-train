@@ -20,12 +20,11 @@ spec:
     app: rabbitmq
 ---
 apiVersion: apps/v1
-kind: StatefulSet
+kind: Deployment
 metadata:
   name: rabbitmq-cluster
 spec:
   replicas: 3  # Number of RabbitMQ cluster nodes
-  serviceName: rabbitmq-service
   selector:
     matchLabels:
       app: rabbitmq
@@ -54,7 +53,7 @@ spec:
                   name: rabbitmq-secret
                   key: rabbitmq-erlang-cookie
             - name: RABBITMQ_DEFAULT_USER
-              value: rabbitmq  # Set your desired username here
+              value: myusername  # Set your desired username here
             - name: RABBITMQ_DEFAULT_PASS
               valueFrom:
                 secretKeyRef:
@@ -64,19 +63,17 @@ spec:
               value: rabbit@$(POD_NAME).rabbitmq-cluster.default.svc.cluster.local
             - name: RABBITMQ_USE_LONGNAME
               value: "true"
-            - name: RABBITMQ_CLUSTER_DISC_NODES
-              value: rabbit@rabbitmq-cluster-0.rabbitmq-cluster.default.svc.cluster.local,rabbit@rabbitmq-cluster-1.rabbitmq-cluster.default.svc.cluster.local,rabbit@rabbitmq-cluster-2.rabbitmq-cluster.default.svc.cluster.local
           volumeMounts:
             - name: rabbitmq-data
               mountPath: /var/lib/rabbitmq
-  volumeClaimTemplates:
-    - metadata:
-        name: rabbitmq-data
-      spec:
-        accessModes: [ "ReadWriteOnce" ]
-        resources:
-          requests:
-            storage: 10Gi
+      volumeClaimTemplates:
+        - metadata:
+            name: rabbitmq-data
+          spec:
+            accessModes: [ "ReadWriteOnce" ]
+            resources:
+              requests:
+                storage: 10Gi
 ---
 apiVersion: v1
 kind: Secret
