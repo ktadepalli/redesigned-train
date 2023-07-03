@@ -58,7 +58,7 @@ spec:
                 fieldRef:
                   fieldPath: metadata.name
             - name: RABBITMQ_COOKIE_FILE
-              value: /var/lib/rabbitmqdatad/.erlang.cookie
+              value: /var/lib/rabbitmq/.erlang.cookie
           args:
             - rabbitmq-server
             - --cluster-formation
@@ -68,13 +68,12 @@ spec:
             - --name
             - $(POD_NAME).rabbitmq-service.default.svc.cluster.local
             - --set-cookie
-            - $(RABBITMQ_COOKIE_FILE)
+            - /var/lib/rabbitmq/.erlang.cookie
           volumeMounts:
             - name: rabbitmq-data
-              mountPath: /var/lib/rabbitmqdatad
+              mountPath: /var/lib/rabbitmq
             - name: cookie-volume
-              mountPath: /var/lib/rabbitmqdatad/.erlang.cookie
-              subPath: .erlang.cookie
+              mountPath: /var/lib/rabbitmq-cookie
               readOnly: true
       volumes:
         - name: rabbitmq-data
@@ -85,12 +84,3 @@ spec:
             items:
               - key: rabbitmq-erlang-cookie
                 path: .erlang.cookie
----
-apiVersion: v1
-kind: Secret
-metadata:
-  name: rabbitmq-secret
-type: Opaque
-data:
-  rabbitmq-erlang-cookie: UmFiYml0NjQK
-  rabbitmq-password: UmFiYml0TVE2NAo=
