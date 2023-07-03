@@ -61,7 +61,10 @@ spec:
                   key: rabbitmq-password
           volumeMounts:
             - name: rabbitmq-data
-              mountPath: /var/lib/rabbitmqdata
+              mountPath: /var/lib/rabbitmq
+      volumes:
+        - name: rabbitmq-data
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Secret
