@@ -58,7 +58,7 @@ spec:
                 fieldRef:
                   fieldPath: metadata.name
             - name: RABBITMQ_COOKIE_FILE
-              value: /var/lib/rabbitmq/.erlang.cookie
+              value: /var/lib/rabbitmqdatad/.erlang.cookie
           args:
             - rabbitmq-server
             - --cluster-formation
@@ -71,9 +71,9 @@ spec:
             - $(RABBITMQ_COOKIE_FILE)
           volumeMounts:
             - name: rabbitmq-data
-              mountPath: /var/lib/rabbitmq
+              mountPath: /var/lib/rabbitmqdatad
             - name: cookie-volume
-              mountPath: /var/lib/rabbitmq/.erlang.cookie
+              mountPath: /var/lib/rabbitmqdatad/.erlang.cookie
               subPath: .erlang.cookie
               readOnly: true
       volumes:
