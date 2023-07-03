@@ -1,4 +1,3 @@
----
 apiVersion: v1
 kind: Service
 metadata:
@@ -54,6 +53,12 @@ spec:
                 secretKeyRef:
                   name: rabbitmq-secret
                   key: rabbitmq-password
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: RABBITMQ_COOKIE_FILE
+              value: /var/lib/rabbitmq/.erlang.cookie
           args:
             - rabbitmq-server
             - --cluster-formation
