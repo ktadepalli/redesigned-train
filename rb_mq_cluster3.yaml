@@ -1,0 +1,81 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq-service
+  labels:
+    app: rabbitmq
+spec:
+  type: NodePort
+  ports:
+    - name: amqp
+      port: 5672
+      targetPort: 5672
+      nodePort: 30000  # Define the desired NodePort value
+    - name: management
+      port: 15672
+      targetPort: 15672
+      nodePort: 30001  # Define the desired NodePort value
+  selector:
+    app: rabbitmq
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rabbitmq-cluster
+spec:
+  replicas: 3  # Number of RabbitMQ cluster nodes
+  selector:
+    matchLabels:
+      app: rabbitmq
+  template:
+    metadata:
+      labels:
+        app: rabbitmq
+    spec:
+      containers:
+        - name: rabbitmq
+          image: rabbitmq:3.8.16-management
+          resources:
+            limits:
+              cpu: 500m
+              memory: 512Mi
+            requests:
+              cpu: 100m
+              memory: 256Mi
+          ports:
+            - containerPort: 5672
+            - containerPort: 15672
+          env:
+            - name: RABBITMQ_ERLANG_COOKIE
+              valueFrom:
+                secretKeyRef:
+                  name: rabbitmq-secret
+                  key: rabbitmq-erlang-cookie
+            - name: RABBITMQ_DEFAULT_USER
+              value: myusername  # Set your desired username here
+            - name: RABBITMQ_DEFAULT_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: rabbitmq-secret
+                  key: rabbitmq-password
+          volumeMounts:
+            - name: rabbitmq-data
+              mountPath: /var/lib/rabbitmq
+      volumeClaimTemplates:
+        - metadata:
+            name: rabbitmq-data
+          spec:
+            accessModes: [ "ReadWriteOnce" ]
+            resources:
+              requests:
+                storage: 10Gi
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: rabbitmq-secret
+type: Opaque
+data:
+  rabbitmq-erlang-cookie: UmFiYml0NjQK
+  rabbitmq-password: UmFiYml0TVE2NAo=
