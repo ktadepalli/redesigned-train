@@ -56,22 +56,6 @@ spec:
                 secretKeyRef:
                   name: rabbitmq-secret
                   key: rabbitmq-erlang-cookie
-          readinessProbe:
-            exec:
-              command:
-                - /bin/bash
-                - -c
-                - rabbitmq-diagnostics ping
-            initialDelaySeconds: 10
-            periodSeconds: 10
-          livenessProbe:
-            exec:
-              command:
-                - /bin/bash
-                - -c
-                - rabbitmq-diagnostics ping
-            initialDelaySeconds: 30
-            periodSeconds: 30
           volumeMounts:
             - name: rabbitmq-data
               mountPath: /var/lib/rabbitmq
