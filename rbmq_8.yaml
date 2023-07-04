@@ -1,0 +1,55 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rabbitmq-cluster-operator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rabbitmq-cluster-operator
+  template:
+    metadata:
+      labels:
+        app: rabbitmq-cluster-operator
+    spec:
+      containers:
+        - name: rabbitmq-cluster-operator
+          image: rabbitmq/cluster-operator:1.11.0
+          args:
+            - "start"
+          env:
+            - name: WATCH_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+---
+apiVersion: rabbitmq.com/v1beta1
+kind: RabbitmqCluster
+metadata:
+  name: example-rabbitmq-cluster
+spec:
+  replicas: 3
+  persistentVolumeClaimSpec:
+    storageClassName: default
+    accessModes:
+      - ReadWriteOnce
+    resources:
+      requests:
+        storage: 5Gi
+  config:
+    RABBITMQ_ERLANG_COOKIE: "SWQOKODSQALRPCLNMEQG"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq-management
+spec:
+  type: NodePort
+  selector:
+    app: rabbitmq-management
+  ports:
+    - protocol: TCP
+      port: 15672
+      targetPort: 15672
+      nodePort: 30000  # Specify the desired NodePort value
