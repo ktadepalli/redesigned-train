@@ -6,7 +6,7 @@ metadata:
 type: Opaque
 data:
   rabbitmq-erlang-cookie: UmFiYml0NjQK
-  default_pass: UmFiYml0TVE2NAo=
+  RABBITMQ_DEFAULT_PASS: UmFiYml0TVE2NAo=
 ---
 apiVersion: rabbitmq.com/v1beta1
 kind: RabbitmqCluster
@@ -50,10 +50,10 @@ spec:
             containers:
               - name: rabbitmq
                 env:
-                - name: default_user
+                - name: RABBITMQ_DEFAULT_PASS
                   value: myuser
-                - name: default_pass
+                - name: RABBITMQ_DEFAULT_PASS
                   valueFrom:
                     secretKeyRef:
                       name: rabbitmq-secret
-                      key: default_pass
+                      key: RABBITMQ_DEFAULT_PASS
