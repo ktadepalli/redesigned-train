@@ -1,0 +1,7 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: gke_sc 
+provisioner: kubernetes.io/gce-pd  # Google Cloud Persistent Disk provisioner
+parameters:
+  type: pd-standard  # Choose the type of Google Cloud PD (pd-standard, pd-ssd, etc.)
