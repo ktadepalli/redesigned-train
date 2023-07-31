@@ -5,3 +5,4 @@ metadata:
 provisioner: kubernetes.io/gce-pd  # Google Cloud Persistent Disk provisioner
 parameters:
   type: pd-standard  # Choose the type of Google Cloud PD (pd-standard, pd-ssd, etc.)
+  size: 10Gi
