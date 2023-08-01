@@ -1,0 +1,18 @@
+apiVersion: rabbitmq.com/v1beta1
+kind: RabbitmqCluster
+metadata:
+  name: my-rabbitmq-cluster
+spec:
+  nodeCount: 3
+  rabbitmqVersion: "3.8.19"
+  volumeClaimTemplates:
+    - metadata:
+        name: data-pvc
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: "10Gi"
+        storageClassName: your-storage-class-name
+        volumeMode: Filesystem
