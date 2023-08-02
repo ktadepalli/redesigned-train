@@ -12,4 +12,4 @@ allowedTopologies:
 - matchLabelExpressions:
   - key: topology.kubernetes.io/zone
     values:
-    - us-east1-b
+    - us-east1-d
