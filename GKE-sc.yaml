@@ -1,15 +1,39 @@
+---
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: zk-storageclass
+provisioner: kubernetes.io/gce-pd
 parameters:
   type: pd-standard
-provisioner: kubernetes.io/gce-pd 
 volumeBindingMode: WaitForFirstConsumer
 reclaimPolicy: Delete
-volumeBindingMode: Immediate
 allowedTopologies:
-- matchLabelExpressions:
-  - key: topology.kubernetes.io/zone
-    values:
-    - us-east1-d
+  - matchLabelExpressions:
+      - key: topology.kubernetes.io/zone
+        values:
+          - us-east1-d
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: zk-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+  storageClassName: zk-storageclass
+  volumeMode: Filesystem
+  # NodeAffinity to specify that the PVC should be bound to nodes in us-east1-d
+  volumeBindingMode: WaitForFirstConsumer
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: topology.kubernetes.io/zone
+              operator: In
+              values:
+                - us-east1-d
+
