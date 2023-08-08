@@ -1,0 +1,31 @@
+{
+  "Comment": "A state machine that processes instances and retrieves details",
+  "StartAt": "PreLoop",
+  "States": {
+    "PreLoop": {
+      "Type": "Pass",
+      "Result": "Starting the instance processing loop",
+      "Next": "Loop"
+    },
+    "Loop": {
+      "Type": "Map",
+      "ItemsPath": "$.input",
+      "ResultPath": "$.currentInstance",
+      "Iterator": {
+        "StartAt": "Step2",
+        "States": {
+          "Step2": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "Parameters": {
+              "FunctionName": "YourLambdaFunctionName",
+              "Payload.$": "$.currentInstance"
+            },
+            "End": true
+          }
+        }
+      },
+      "End": true
+    }
+  }
+}
