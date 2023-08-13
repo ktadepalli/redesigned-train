@@ -1,0 +1,23 @@
+{
+  "StartAt": "Step1",
+  "States": {
+    "Step1": {
+      "Type": "Pass",
+      "Result": { "data": "hello" },
+      "ResultPath": "$.step1Output",
+      "Next": "Step2"
+    },
+    "Step2": {
+      "Type": "Pass",
+      "Result": { "message": "world" },
+      "ResultPath": "$.step2Output",
+      "Next": "Step3"
+    },
+    "Step3": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:REGION:ACCOUNT_ID:function:YOUR_LAMBDA_FUNCTION_3",
+      "InputPath": "$.step1Output.data",  // Use the 'data' field from step1Output as input
+      "End": true
+    }
+  }
+}
