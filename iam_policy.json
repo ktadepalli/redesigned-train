@@ -1,0 +1,99 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "elasticfilesystem:ClientMount",
+                "elasticfilesystem:ClientWrite"
+            ],
+            "Resource": "arn:aws:elasticfilesystem:us-east-1:123456789012:file-system/fs-01234567",
+            "Condition": {
+                "IpAddress": {
+                    "aws:SourceIp": "192.168.1.0/24"
+                },
+                "StringEquals": {
+                    "aws:SourceVpc": "vpc-12345678"
+                }
+            }
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "s3:ListBucket",
+                "s3:GetObject",
+                "s3:PutObject"
+            ],
+            "Resource": [
+                "arn:aws:s3:::your-bucket-name",
+                "arn:aws:s3:::your-bucket-name/*"
+            ],
+            "Condition": {
+                "IpAddress": {
+                    "aws:SourceIp": "192.168.1.0/24"
+                },
+                "StringEquals": {
+                    "aws:SourceVpc": "vpc-12345678"
+                }
+            }
+        },
+        {
+            "Effect": "Allow",
+            "Action": "dynamodb:*",
+            "Resource": "arn:aws:dynamodb:us-east-1:123456789012:table/YourTableName",
+            "Condition": {
+                "IpAddress": {
+                    "aws:SourceIp": "192.168.1.0/24"
+                },
+                "StringEquals": {
+                    "aws:SourceVpc": "vpc-12345678"
+                }
+            }
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "kms:Encrypt",
+                "kms:Decrypt",
+                "kms:ReEncrypt*",
+                "kms:GenerateDataKey*",
+                "kms:DescribeKey"
+            ],
+            "Resource": "arn:aws:kms:us-east-1:123456789012:key/your-kms-key-arn",
+            "Condition": {
+                "IpAddress": {
+                    "aws:SourceIp": "192.168.1.0/24"
+                },
+                "StringEquals": {
+                    "aws:SourceVpc": "vpc-12345678"
+                }
+            }
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "secretsmanager:GetSecretValue",
+                "secretsmanager:DescribeSecret"
+            ],
+            "Resource": "arn:aws:secretsmanager:us-east-1:123456789012:secret:your-secret-name",
+            "Condition": {
+                "IpAddress": {
+                    "aws:SourceIp": "192.168.1.0/24"
+                },
+                "StringEquals": {
+                    "aws:SourceVpc": "vpc-12345678"
+                }
+            }
+        },
+        {
+            "Effect": "Deny",
+            "Action": "*",
+            "Resource": "*",
+            "Condition": {
+                "StringNotEquals": {
+                    "aws:SourceVpc": "vpc-12345678"
+                }
+            }
+        }
+    ]
+}
