@@ -1,0 +1,102 @@
+#The following code is formatted to work with Python v.3.6 and later.
+
+import requests
+from requests.auth import HTTPBasicAuth
+import json
+
+base_URL = "https://acmeco.xmatters.com/api/integration/1/functions/ba60cb1-3513-4320-b48a-05cb501bb5af/triggers"
+
+auth = HTTPBasicAuth("username", "password")
+
+headers = {"Content-Type": "application/json"}
+
+data = {
+    "recipients": [
+        {"id": "mmcbride", "recipientType": "PERSON"},
+        {"id": "bfdbcb31-d02e-4a4f-a91c-7d68fbe416df", "recipientType": "PERSON"},
+        {"id": "mmcbride|Work Email", "recipientType": "DEVICE"},
+        {"id": "4a0fdfb4-7c49-4581-9cd9-804f2956e19b", "recipientType": "DEVICE"},
+        {"id": "Executives", "recipientType": "GROUP"},
+        {
+            "id": "f19d8b10-923a-4c23-8348-06ced678075e",
+            "recipientType": "GROUP",
+            "responseCountThreshold": 3,
+        },
+        {
+            "id": "First Aid Attendants",
+            "recipientType": "DYNAMIC_TEAM",
+            "responseCountThreshold": 1,
+        },
+        {"id": "ed2606c5-ef2b-4ce8-9259-d5cdacd5bd90", "recipientType": "DYNAMIC_TEAM"},
+    ],
+    "otherResponseCountThreshold": 4,
+    "priority": "HIGH",
+    "expirationInMinutes": 60,
+    "overrideDeviceRestrictions": True,
+    "escalationOverride": True,
+    "bypassPhoneIntro": True,
+    "requirePhonePassword": True,
+    "attachments": [
+      {
+        "path": "attachments/18a2e807-6466-471e-a378-4c6e5bb5bccb/Company_Logo",
+        }
+    ],
+    "voicemailOptions": {"retry": 0, "every": 60, "leave": "callbackonly"},
+    "conference": {"bridgeId": "Corporate WebEx", "type": "EXTERNAL"},
+    "responseOptions": [
+        {"id": "fee39ecf-75a7-45eb-9e63-ffc441499c4f"},
+        {
+            "id": "085d4bea-9dfb-4d2b-8136-22e19b1baaf6",
+            "redirectUrl": "https://jira.example.com/view/INCD-2933",
+        },
+        {
+            "number": 3,
+            "text": "Reject",
+            "description": "I cannot help",
+            "prompt": "Reject",
+            "action": "RECORD_RESPONSE",
+            "contribution": "NEGATIVE",
+            "joinConference": False,
+            "allowComments": False,
+        },
+    ],
+    "properties": {
+        "myBooleanProperty": False,
+        "myNumberProperty": 22183,
+        "myTextProperty" : "See the attached evacuation route map.",
+        "myListProperty": ["Grocery", "Automotive", "Seasonal"],
+        "myComboProperty": "Shelter in place.",
+        "myPasswordProperty": "e293Usf@di",
+        "myHierarchyProperty": [
+            {"category": "Country", "value": "USA"},
+            {"category": "State", "value": "California"},
+            {"category": "City", "value": "Los Angeles"},
+        ],
+    },
+    "senderOverrides": {"displayName": "FIRE MARSHALL", "callerId": "+12505551234"},
+    "targetAllDevices": False,
+    "targetDeviceNames": [
+        {"name": "Work Email"},
+        {"name": "Work Phone"},
+        {"name": "Home Email"},
+        {"name": "Home Phone"},
+        {"name": "SMS Phone"},
+        {"name": "Fax"},
+        {"name": "Numeric Pager"},
+        {"name": "Pager"},
+        {"name": "Mobile Phone"},
+        {"name": "My custom device name"},
+    ],
+}
+
+data_string = json.dumps(data)
+
+response = requests.post(
+    inbound_integration_url, headers=headers, data=data_string, auth=auth
+)
+
+responseCode = response.status_code
+if responseCode == 202:
+    print("Event triggered = " + response.json()["requestId"])
+else:
+    print("Error: response code is " + str(responseCode))
