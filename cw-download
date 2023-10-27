@@ -1,43 +1,31 @@
-To download and save the CloudWatch Logs to a local file using Python and the `boto3` library, you can modify the code as follows:
+import os
 
-```python
-import boto3
-import time
+# Function to list all files in a folder and its subfolders
+def list_files_in_directory(root_directory):
+    file_list = []
+    for root, dirs, files in os.walk(root_directory):
+        for file in files:
+            file_list.append(os.path.join(root, file))
+    return file_list
 
-# Create a CloudWatch Logs client for the eu-west-2 region
-client = boto3.client('logs', region_name='eu-west-2')
+# Function to search for a string in a file
+def search_string_in_file(file_path, search_string):
+    try:
+        with open(file_path, 'r', encoding='utf-8') as file:
+            for line_number, line in enumerate(file, 1):
+                if search_string in line:
+                    print(f"Found '{search_string}' in '{file_path}' (line {line_number}):")
+                    print(line.strip())
+    except Exception as e:
+        print(f"Error while processing file '{file_path}': {e}")
 
-log_group_name = 'your-log-group-name'
-log_stream_name = 'your-log-stream-name'
+# Define the folder path and the string you want to search for
+folder_path = "/path/to/your/folder"
+search_string = "your_search_string"
 
-# Define the time range for October 22, 2023
-start_datetime = time.mktime(time.strptime("2023-10-22 00:00:00", "%Y-%m-%d %H:%M:%S"))  # Start of the day
-end_datetime = time.mktime(time.strptime("2023-10-23 00:00:00", "%Y-%m-%d %H:%M:%S"))  # End of the day
+# List all files in the folder and its subfolders
+file_list = list_files_in_directory(folder_path)
 
-# Convert the datetime objects to timestamps in milliseconds
-start_time = int(start_datetime) * 1000
-end_time = int(end_datetime) * 1000
-
-# Retrieve log events
-response = client.get_log_events(
-    logGroupName=log_group_name,
-    logStreamName=log_stream_name,
-    startTime=start_time,
-    endTime=end_time
-)
-
-# Create a local file and write the log events to it
-with open('logs.txt', 'w') as log_file:
-    for event in response['events']:
-        log_file.write(event['message'] + '\n')
-```
-
-In this code:
-
-1. Replace `'your-log-group-name'` and `'your-log-stream-name'` with the actual names of your CloudWatch log group and log stream.
-
-2. It retrieves log events from the specified log group and log stream within the specified time range.
-
-3. It creates a local file named `'logs.txt'` and writes the log events to this file.
-
-Make sure to install the `boto3` library and configure your AWS credentials and region before running this code. The log events will be saved in the `'logs.txt'` file in your local directory.
+# Search for the string in each file
+for file_path in file_list:
+    search_string_in_file(file_path, search_string)
