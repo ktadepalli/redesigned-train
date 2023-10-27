@@ -29,3 +29,38 @@ file_list = list_files_in_directory(folder_path)
 # Search for the string in each file
 for file_path in file_list:
     search_string_in_file(file_path, search_string)
+
+========
+import os
+
+# Function to list all files in a folder and its subfolders
+def list_files_in_directory(root_directory):
+    file_list = []
+    for root, dirs, files in os.walk(root_directory):
+        for file in files:
+            file_list.append(os.path.join(root, file))
+    return file_list
+
+# Function to check if a file contains a string
+def file_contains_string(file_path, search_string):
+    try:
+        with open(file_path, 'r', encoding='utf-8') as file:
+            for line in file:
+                if search_string in line:
+                    return True
+    except Exception as e:
+        pass
+    return False
+
+# Define the folder path and the string you want to search for
+folder_path = "/path/to/your/folder"
+search_string = "your_search_string"
+
+# List all files in the folder and its subfolders
+file_list = list_files_in_directory(folder_path)
+
+# Search for the string in each file and print the file name if found
+for file_path in file_list:
+    if file_contains_string(file_path, search_string):
+        print(f"Found '{search_string}' in '{file_path}'")
+
