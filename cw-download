@@ -32,7 +32,8 @@ for event in response['events']:
 aws logs get-log-events \
   --log-group-name <log-group-name> \
   --log-stream-name <log-stream-name> \
-  --start-time <start-timestamp> \
-  --end-time <end-timestamp> \
+  --start-time 1508659200000 \  # October 22, 2023, 00:00:00 in milliseconds since the Unix epoch
+  --end-time 1508745599000 \    # October 22, 2023, 23:59:59 in milliseconds since the Unix epoch
   --region eu-west-2
+
 
