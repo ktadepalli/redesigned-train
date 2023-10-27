@@ -1,0 +1,31 @@
+import boto3
+
+# Create a CloudWatch Logs client for the eu-west-2 region
+client = boto3.client('logs', region_name='eu-west-2')
+
+# Rest of the code remains the same
+log_group_name = '<log-group-name>'
+log_stream_name = '<log-stream-name>'
+start_time = <start-timestamp>
+end_time = <end-timestamp>
+
+response = client.get_log_events(
+    logGroupName=log_group_name,
+    logStreamName=log_stream_name,
+    startTime=start_time,
+    endTime=end_time
+)
+
+# Process the log events
+for event in response['events']:
+    print(event['message'])
+
+==============
+
+aws logs get-log-events \
+  --log-group-name <log-group-name> \
+  --log-stream-name <log-stream-name> \
+  --start-time <start-timestamp> \
+  --end-time <end-timestamp> \
+  --region eu-west-2
+
