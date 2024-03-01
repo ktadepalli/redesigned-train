@@ -1,0 +1,17 @@
+import os
+
+def search_string_in_files(directory, search_string):
+    for root, _, files in os.walk(directory):
+        for file in files:
+            filepath = os.path.join(root, file)
+            try:
+                with open(filepath, 'r') as f:
+                    if search_string in f.read():
+                        print(f"Found '{search_string}' in: {filepath}")
+            except Exception as e:
+                print(f"Error reading file: {filepath}: {e}")
+
+if __name__ == "__main__":
+    directory_to_search = "/path/to/.terraform/modules"
+    search_string = "your_search_string"
+    search_string_in_files(directory_to_search, search_string)
