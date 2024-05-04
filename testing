@@ -1,0 +1,14 @@
+# Open masterfile and client file
+with open("masterfile.txt", "r") as master_file:
+    master_lines = master_file.readlines()
+
+with open("clientfile.txt", "r") as client_file:
+    client_lines = client_file.readlines()
+
+# Iterate through each line in masterfile
+for master_line in master_lines:
+    # Search for the line in client file
+    if master_line in client_lines:
+        print("Line found in client file:", master_line.strip())
+    else:
+        print("Line not found in client file:", master_line.strip())
