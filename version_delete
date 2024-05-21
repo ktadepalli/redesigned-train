@@ -1,0 +1,40 @@
+import boto3
+
+def delete_all_objects(bucket_name, region):
+    s3 = boto3.client('s3', region_name=region)
+
+    # List all object versions in the bucket
+    paginator = s3.get_paginator('list_object_versions')
+    delete_marker_list = []
+    version_list = []
+
+    for page in paginator.paginate(Bucket=bucket_name):
+        if 'Versions' in page:
+            version_list.extend(page['Versions'])
+        if 'DeleteMarkers' in page:
+            delete_marker_list.extend(page['DeleteMarkers'])
+
+    # Create a list of objects to delete
+    objects_to_delete = []
+
+    for version in version_list:
+        objects_to_delete.append({'Key': version['Key'], 'VersionId': version['VersionId']})
+
+    for delete_marker in delete_marker_list:
+        objects_to_delete.append({'Key': delete_marker['Key'], 'VersionId': delete_marker['VersionId']})
+
+    # Delete the objects
+    if objects_to_delete:
+        for i in range(0, len(objects_to_delete), 1000):
+            response = s3.delete_objects(
+                Bucket=bucket_name,
+                Delete={
+                    'Objects': objects_to_delete[i:i + 1000],
+                    'Quiet': True
+                }
+            )
+            print(response)
+
+# Replace 'your-bucket-name' with the name of your S3 bucket
+# Replace 'your-region' with the AWS region where your bucket is located
+delete_all_objects('your-bucket-name', 'your-region')
