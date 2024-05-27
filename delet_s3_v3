@@ -1,0 +1,51 @@
+import boto3
+
+def delete_delete_markers_in_batches(bucket_name, region_name, max_batch_size_gb=5):
+    s3 = boto3.client('s3', region_name=region_name)
+    s3_resource = boto3.resource('s3', region_name=region_name)
+    bucket = s3_resource.Bucket(bucket_name)
+    
+    max_batch_size_bytes = max_batch_size_gb * 1024**3  # Convert GB to bytes
+
+    def get_delete_markers():
+        delete_markers = []
+        total_size = 0
+        
+        for version in bucket.object_versions.filter(Prefix=''):
+            if version.is_latest and version.version_id != 'null':
+                # Add the delete marker to the list
+                delete_markers.append({
+                    'Key': version.object_key,
+                    'VersionId': version.version_id
+                })
+                
+                # Estimate the size of this marker (for simplicity, using 1KB per marker)
+                total_size += 1024  # 1KB per delete marker (adjust if you have a more accurate size)
+
+                # Stop if we have reached the batch size limit
+                if total_size >= max_batch_size_bytes:
+                    break
+        return delete_markers
+
+    while True:
+        delete_markers = get_delete_markers()
+        
+        if not delete_markers:
+            print("No more delete markers found.")
+            break
+
+        response = s3.delete_objects(
+            Bucket=bucket_name,
+            Delete={
+                'Objects': delete_markers
+            }
+        )
+        print(f"Deleted {len(delete_markers)} delete markers: {response}")
+        
+        # Pause or add delay if needed to avoid hitting rate limits
+        # time.sleep(1)
+
+if __name__ == "__main__":
+    bucket_name = 'your-bucket-name'
+    region_name = 'your-region-name'
+    delete_delete_markers_in_batches(bucket_name, region_name)
