@@ -1,0 +1,28 @@
+Implemented Graviton for EC2 and RDS:
+
+Leveraged AWS Graviton processors for EC2 and RDS instances to achieve significant cost savings. These instances offer better price-performance compared to traditional x86 instances, resulting in lower operational costs.
+Analysed and Added Right Sizing of EC2:
+
+Conducted thorough analysis to determine the appropriate instance sizes for EC2 workloads. Implemented right-sizing strategies to match the instance types and sizes with actual usage patterns, leading to more efficient resource utilization and cost reduction.
+Setup for Power Shutdown and Startup of Infrastructure:
+
+Implemented automated scheduling for power shutdown during non-peak hours and power startup during peak hours. This setup helps in cutting down unnecessary costs associated with running instances during periods of low demand.
+Migrating Test Environments to a Shared Model:
+
+Consolidated multiple test environments into a shared model to optimize resource usage. By sharing resources among different test environments, we reduced redundancy and improved overall cost efficiency.
+Reduction of VPCE (VPC Endpoints):
+
+Reviewed and optimized the use of VPC Endpoints. By reducing the number of unnecessary endpoints and consolidating traffic through fewer endpoints, we achieved cost savings without compromising on performance and security.
+Additional Challenges
+Evaluating Risks and Ensuring Proper Backups:
+
+Conducted a comprehensive risk evaluation for AWS cost optimization strategies to ensure the stability and reliability of critical applications like Nthor and Pega. Implemented robust backup solutions to protect data and maintain business continuity.
+Setting Up Parallel Environments for Critical Applications:
+
+Faced significant challenges in setting up parallel environments within the same account for applications like Nthor and Pega. These parallel environments were essential for testing and validating changes without disrupting production workloads, ensuring seamless transitions and minimizing risk.
+Demising of Old Environment with Proper Planning and Care:
+
+Developed and executed a detailed plan for the demising of the old environment. This included careful decommissioning of outdated resources, ensuring data integrity, and migrating essential services to the new optimized setup without impacting business operations.
+Restart of Pega Application with High Availability:
+
+Implemented a restart strategy for the Pega application to ensure high availability. This involved connecting with Pega APIs to safely bring down and restart nodes sequentially, minimizing downtime and ensuring continuous availability of the application. Additionally, implemented a notification system to alert the RTB team via mobile if the automation job fails, ensuring prompt response and resolution.
