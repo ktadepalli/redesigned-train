@@ -1,0 +1,26 @@
+import pandas as pd
+
+# File path
+file_path = 'data.txt'  # Replace with your actual file path
+
+# Read the file content
+with open(file_path, 'r') as file:
+    content = file.read()
+
+# Assume the data is separated by spaces (you can change the delimiter)
+data = content.split()
+
+# Number of columns (replace with your actual column count)
+num_columns = 3
+
+# Organize data into a list of lists (each sublist represents a row)
+organized_data = [data[i:i + num_columns] for i in range(0, len(data), num_columns)]
+
+# Create numeric column names
+column_names = list(range(1, num_columns + 1))
+
+# Convert to a pandas DataFrame with numeric column names
+df = pd.DataFrame(organized_data, columns=column_names)
+
+# Display the DataFrame
+print(df)
