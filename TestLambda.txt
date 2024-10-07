@@ -1,0 +1,19 @@
+import requests
+
+def lambda_handler(event, context):
+    # The endpoint of the IDMZ VPCE
+    proxy_url = 'http://<idmz-vpce-endpoint>:3128'
+    
+    # Test a request to an external whitelisted website
+    try:
+        response = requests.get('http://www.whitelisted-website.com', proxies={'http': proxy_url, 'https': proxy_url})
+        
+        return {
+            'statusCode': response.status_code,
+            'body': response.text
+        }
+    except requests.exceptions.RequestException as e:
+        return {
+            'statusCode': 500,
+            'body': str(e)
+        }
