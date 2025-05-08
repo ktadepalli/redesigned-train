@@ -1,0 +1,91 @@
+#Example SSM Role IAM Policy:
+#===========================
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "kms:Decrypt"
+      ],
+      "Resource": "arn:aws:kms:<region>:<account-id>:key/<third-party-kms-key-id>"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "sns:Publish"
+      ],
+      "Resource": "arn:aws:sns:<region>:<account-id>:<sns-topic-name>"
+    }
+  ]
+}
+
+#Example SNS Topic Policy (for publishing messages):
+#==================================================
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "arn:aws:iam::<account-id>:role/<SSM-document-role>"
+      },
+      "Action": "sns:Publish",
+      "Resource": "arn:aws:sns:<region>:<account-id>:<sns-topic-name>"
+    }
+  ]
+}
+#CW
+===
+aws cloudwatch put-metric-alarm \
+  --alarm-name "Your-CloudWatch-Alarm" \
+  --metric-name "YourMetric" \
+  --namespace "AWS/YourService" \
+  --statistic "Average" \
+  --period 300 \
+  --threshold 80 \
+  --comparison-operator "GreaterThanOrEqualToThreshold" \
+  --evaluation-periods 1 \
+  --alarm-actions arn:aws:ssm:region:account-id:automation-execution/DecryptSNSMessage \
+  --ok-actions arn:aws:ssm:region:account-id:automation-execution/DecryptSNSMessage
+
+{
+  "alarmName": "Your-CloudWatch-Alarm",
+  "actions": [
+    {
+      "action": {
+        "type": "aws:executeAutomation",
+        "automation": "DecryptSNSMessage",
+        "parameters": {
+          "path-to-encrypted-payload": "$.Trigger.Records[0].Sns.Message"
+        }
+      }
+    }
+  ]
+}
+###LAST##############
+{
+  "schemaVersion": "2.2",
+  "description": "Decrypt SNS Message using third-party KMS",
+  "mainSteps": [
+    {
+      "action": "aws:runShellScript",
+      "name": "decryptSnsPayload",
+      "inputs": {
+        "runCommand": [
+          "aws kms decrypt --ciphertext-blob fileb://<path-to-encrypted-payload> --output text --query Plaintext --region <region> | base64 -d > decrypted_message.json"
+        ]
+      }
+    },
+    {
+      "action": "aws:runShellScript",
+      "name": "forwardToSNS",
+      "inputs": {
+        "runCommand": [
+          "aws sns publish --topic-arn arn:aws:sns:<region>:<account-id>:<sns-topic-name> --message file://decrypted_message.json --region <region>"
+        ]
+      }
+    }
+  ]
+}
+###LAST##############
