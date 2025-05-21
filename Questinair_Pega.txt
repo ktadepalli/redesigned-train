@@ -1,0 +1,27 @@
+How frequently we need to change the Helm chart	
+Recreate Deployment	
+	
+Is horizontal pod autoscaling supported and recommended for specific services (e.g., Web, BIX, Hazelcast)	
+How are security patches and vulnerabilities in images handled	
+Are there any JVM tuning parameters we should apply	JVM params needs to be added?
+What is the recommended process for Pega platform and application upgrades on EKS	
+How are hotfixes or patch updates delivered for EKS-based Pega deployments?	
+Are there any specific settings or tuning for integrations (Kafka, RDS, OpenSearch, external services)?	
+	
+How do we handle failover scenarios (Multi-AZ failover, DB restarts)?	
+What is the best way to handle Kafka topic retries, dead-letter queues, and message ordering from the Pega side?	
+	
+Have there been incidents of data not being indexed properly from SRS pods?	
+Any issues related to SRS pod crash loops caused by OpenSearch connection failures?	
+Are there any known issues with:	
+OpenSearch connection timeouts?	
+Indexing failures (e.g., due to schema mismatches)?	
+Does Pega handle index lifecycle policies, or should we manage this in OpenSearch	
+	
+Kafka consumer group lag in Pega Stream pods?	
+Message duplication or loss during pod restarts?	
+Kafka topic name mismatches or auto-topic creation errors?	
+	
+Have there been any issues with:.Pega not recovering from Kafka broker unavailability?	
+Pod crashes when Kafka topics are unavailable?	
+Backup mechanism.1) Are backups required for MSK and Opensearch	
