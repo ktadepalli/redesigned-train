@@ -25,3 +25,5 @@ Kafka topic name mismatches or auto-topic creation errors?
 Have there been any issues with:.Pega not recovering from Kafka broker unavailability?	
 Pod crashes when Kafka topics are unavailable?	
 Backup mechanism.1) Are backups required for MSK and Opensearch	
+
+Do we need to maintain Kafka and Eseach clients
