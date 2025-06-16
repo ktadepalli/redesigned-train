@@ -1,0 +1,41 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cwagentconfig
+  namespace: amazon-cloudwatch
+data:
+  cwagentconfig.json: |
+    {
+      "agent": {
+        "region": "{{region_name}}"
+      },
+      "logs": {
+        "metrics_collected": {
+          "kubernetes": {
+            "cluster_name": "{{cluster_name}}",
+            "metrics_collection_interval": 60
+          }
+        },
+        "force_flush_interval": 5
+      },
+      "metrics": {
+        "metrics_collected": {
+          "cadvisor": {
+            "metrics_collection_interval": 60
+          },
+          "kubernetes": {
+            "cluster_name": "{{cluster_name}}",
+            "metrics_collection_interval": 60,
+            "add_service_as_attribute": true
+          }
+        },
+        "aggregation_dimensions": [
+          ["ClusterName"],
+          ["ClusterName", "Namespace"],
+          ["ClusterName", "Namespace", "PodName"]
+        ],
+        "append_dimensions": {
+          "ClusterName": "{{cluster_name}}"
+        }
+      }
+    }
