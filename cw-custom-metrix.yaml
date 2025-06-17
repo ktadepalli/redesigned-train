@@ -9,3 +9,9 @@ groupNames
 /aws/containerinsights/<your-cluster>/application
 /aws/containerinsights/<your-cluster>/host
 /aws/containerinsights/<your-cluster>/dataplane
+----
+
+fields @timestamp, PodName, Namespace, Status, Reason
+| filter Type = "Pod"
+| sort @timestamp desc
+| limit 50
