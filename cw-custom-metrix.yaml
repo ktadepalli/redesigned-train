@@ -15,3 +15,11 @@ fields @timestamp, PodName, Namespace, Status, Reason
 | filter Type = "Pod"
 | sort @timestamp desc
 | limit 50
+
+---
+fields @timestamp, PodName, Namespace, Status, Reason
+| filter Type = "Pod"
+  and Namespace = "mynamespace"
+  and (Status = "Pending" or Status = "Failed")
+| sort @timestamp desc
+| limit 50
