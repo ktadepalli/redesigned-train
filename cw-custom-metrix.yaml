@@ -23,3 +23,7 @@ fields @timestamp, PodName, Namespace, Status, Reason
   and (Status = "Pending" or Status = "Failed")
 | sort @timestamp desc
 | limit 50
+
+---
+{ $.Type = "Pod" && ($.Status = "Pending" || $.Status = "Failed") && $.Namespace = "mynamespace" }
+
