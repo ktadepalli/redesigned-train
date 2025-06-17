@@ -1,0 +1,11 @@
+fields @timestamp, involvedObject.name as PodName, reason, message
+| filter involvedObject.kind = "Pod"
+| sort @timestamp desc
+| limit 20
+
+---
+groupNames
+/aws/containerinsights/<your-cluster>/events
+/aws/containerinsights/<your-cluster>/application
+/aws/containerinsights/<your-cluster>/host
+/aws/containerinsights/<your-cluster>/dataplane
