@@ -137,3 +137,21 @@ volumes:
 volumeMounts:
   - name: myweb-logs
     mountPath: /var/myweb-logs
+---
+[MULTILINE_PARSER]
+    Name              multiline_java
+    Type              regex
+    Flush_Interval    2
+    Key_Content       log
+    Rule              "start_state"  "^[0-9]{4}-[0-9]{2}-[0-9]{2}.*"  "cont"
+    Rule              "cont"         "^\\s+at .*"                    "cont"
+    Rule              "cont"         "^[a-zA-Z].*"                   "cont"
+---
+[INPUT]
+    Name              tail
+    Path              /var/myweb-logs/*/*.log
+    Tag               myweb.*
+    Multiline.parser  multiline_java
+    DB                /buffers/flb_myweb.db
+    Read_from_Head    true
+
