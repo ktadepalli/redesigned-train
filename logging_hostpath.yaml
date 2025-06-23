@@ -154,4 +154,14 @@ volumeMounts:
     Multiline.parser  multiline_java
     DB                /buffers/flb_myweb.db
     Read_from_Head    true
+---
+[MULTILINE_PARSER]
+    Name              multiline_generic
+    Type              regex
+    Flush_Interval    2
+    Key_Content       log
+    Rule              "start_state"  "^\d{4}-\d{2}-\d{2}.*"  "cont"
+    Rule              "cont"         "^\s+.*"                "cont"
+    Rule              "cont"         "^Caused by:.*"         "cont"
+    Rule              "cont"         "^\tat .*"              "cont"
 
