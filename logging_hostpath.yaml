@@ -164,4 +164,23 @@ volumeMounts:
     Rule              "cont"         "^\s+.*"                "cont"
     Rule              "cont"         "^Caused by:.*"         "cont"
     Rule              "cont"         "^\tat .*"              "cont"
+---
+#!/bin/bash
+
+SRC="/var/myweb-logs"
+DEST="/mnt/efs/myweb-backup/$(date +%F)"
+mkdir -p "$DEST"
+
+# Identify latest modified folder (most likely the active pod/container)
+ACTIVE_FOLDER=$(find "$SRC" -maxdepth 1 -mindepth 1 -type d -printf "%T@ %p\n" | sort -nr | head -n1 | awk '{print $2}')
+
+echo "Skipping active log folder: $ACTIVE_FOLDER"
+
+# Copy all except the active folder
+for folder in "$SRC"/*; do
+    if [[ "$folder" != "$ACTIVE_FOLDER" ]]; then
+        cp -r "$folder" "$DEST"/
+    fi
+done
+
 
