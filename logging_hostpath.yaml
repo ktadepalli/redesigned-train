@@ -205,4 +205,17 @@ done < "$input_file"
 
 # Print unique container paths
 printf "%s\n" "${java_containers[@]}" | sort -u
+readarray -t ufiles < <(printf "%s\n" "${java_containers[@]}" | sort -u)
+
+# Step 3: Copy the entire directory for each container to EFS
+for path in "${ufiles[@]}"; do
+  echo "Copying $path to $efs_dest"
+  cp -r "$path" "$efs_dest"/
+done
+
+for path in "${ufiles[@]}"; do
+  echo "Truncating log files in: $path"
+  find "$path" -type f -name "*.log" -exec truncate -s 0 {} \;
+done
+
 
