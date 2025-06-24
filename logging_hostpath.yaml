@@ -186,65 +186,23 @@ done
 ---
 #!/bin/bash
 
-SRC="/var/log/pega-logs"
-DEST="/mnt/efs/pega-backup/$(date +%F)"
-mkdir -p "$DEST"
+input_file="output.log"
+current_path=""
+java_containers=()
 
-# Find the most recently modified folder (assumed active)
-ACTIVE_FOLDER=$(find "$SRC" -mindepth 1 -maxdepth 1 -type d -printf "%T@ %p\n" | sort -nr | head -1 | awk '{print $2}')
-
-echo "Skipping active container folder: $ACTIVE_FOLDER"
-
-# Copy all other folders
-for folder in "$SRC"/*; do
-    if [[ "$folder" != "$ACTIVE_FOLDER" && -d "$folder" ]]; then
-        echo "Copying $folder"
-        cp -r "$folder" "$DEST"/
-    fi
-done
----
-#!/bin/bash
-
-SRC="/var/log/pega-logs"
-DEST="/mnt/efs/pega-backup/$(date +%F)"
-mkdir -p "$DEST"
-
-# Get list of all java process IDs
-JAVA_PIDS=$(ps -eo pid,comm | awk '$2=="java" {print $1}')
-
-# Detect folders currently used by Java processes
-ACTIVE_FOLDERS=()
-for pid in $JAVA_PIDS; do
-  for fd in /proc/$pid/fd/*; do
-    path=$(readlink -f "$fd" 2>/dev/null)
-    if [[ "$path" == $SRC/* ]]; then
-      folder=$(echo "$path" | cut -d/ -f1-5)  # Adjust depth if needed
-      ACTIVE_FOLDERS+=("$folder")
-    fi
-  done
-done
-
-# Remove duplicates
-UNIQUE_ACTIVE_FOLDERS=($(printf "%s\n" "${ACTIVE_FOLDERS[@]}" | sort -u))
-
-echo "Java is actively using the following folders:"
-printf "%s\n" "${UNIQUE_ACTIVE_FOLDERS[@]}"
-
-# Copy all folders except the ones being used
-for folder in "$SRC"/*; do
-  SKIP=false
-  for active in "${UNIQUE_ACTIVE_FOLDERS[@]}"; do
-    if [[ "$folder" == "$active" ]]; then
-      SKIP=true
-      break
-    fi
-  done
-
-  if [[ "$SKIP" == false && -d "$folder" ]]; then
-    echo "Copying $folder"
-    cp -r "$folder" "$DEST"/
-  else
-    echo "Skipping $folder (used by Java)"
+while IFS= read -r line; do
+  # If line starts with /var/log, treat it as a new log file path
+  if [[ "$line" == /var/log/pega-logs/* ]]; then
+    current_path="$line"
   fi
-done
+
+  # If line contains 'java', record the associated path
+  if echo "$line" | grep -q "java"; then
+    container_path=$(echo "$current_path" | cut -d'/' -f1-5)  # Adjust as needed
+    java_containers+=("$container_path")
+  fi
+done < "$input_file"
+
+# Print unique container paths
+printf "%s\n" "${java_containers[@]}" | sort -u
 
