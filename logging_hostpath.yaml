@@ -217,5 +217,70 @@ for path in "${ufiles[@]}"; do
   echo "Truncating log files in: $path"
   find "$path" -type f -name "*.log" -exec truncate -s 0 {} \;
 done
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: pega-used-log-detector
+  namespace: kube-system
+spec:
+  selector:
+    matchLabels:
+      app: pega-used-log-detector
+  template:
+    metadata:
+      labels:
+        app: pega-used-log-detector
+    spec:
+      hostPID: true
+      containers:
+      - name: detector
+        image: amazonlinux:2
+        command: ["/bin/bash", "-c", "chmod +x /opt/script/check-used-folders.sh && /opt/script/check-used-folders.sh && sleep 3600"]
+        volumeMounts:
+        - name: pega-logs
+          mountPath: /var/log/pega-logs
+        - name: host-proc
+          mountPath: /host_proc
+          readOnly: true
+        - name: script
+          mountPath: /opt/script
+      restartPolicy: Always
+      volumes:
+      - name: pega-logs
+        hostPath:
+          path: /var/log/pega-logs
+      - name: host-proc
+        hostPath:
+          path: /proc
+      - name: script
+        configMap:
+          name: pega-used-folder-script
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pega-used-folder-script
+  namespace: kube-system
+data:
+  check-used-folders.sh: |
+    #!/bin/bash
+    LOG_BASE="/var/log/pega-logs"
+    PROC_BASE="/host_proc"
+    used_folders=()
+
+    for pid in $(ls $PROC_BASE | grep -E '^[0-9]+$'); do
+      for fd in "$PROC_BASE/$pid/fd"/*; do
+        target=$(readlink "$fd" 2>/dev/null)
+        if [[ "$target" == "$LOG_BASE"* ]]; then
+          folder=$(echo "$target" | cut -d'/' -f1-5)
+          used_folders+=("$folder")
+        fi
+      done
+    done
+
+    readarray -t unique_folders < <(printf "%s\n" "${used_folders[@]}" | sort -u)
+    echo "Folders currently used by pods:"
+    printf "%s\n" "${unique_folders[@]}"
 
 
