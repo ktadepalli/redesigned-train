@@ -1,0 +1,25 @@
+resource "null_resource" "get_waf_acl_arn" {
+  provisioner "local-exec" {
+    command = <<EOT
+    aws wafv2 list-web-acls \
+      --scope REGIONAL \
+      --region eu-west-1 \
+      --query "WebACLs[?contains(Name, 'FMManagedWebAclv2-default_waf')].{ARN:ARN}" \
+      --output text > waf_acl_arn.txt
+    EOT
+  }
+
+  triggers = {
+    always_run = "${timestamp()}"
+  }
+}
+
+# Read the file and use its content in a local value
+data "local_file" "waf_arn" {
+  filename = "${path.module}/waf_acl_arn.txt"
+  depends_on = [null_resource.get_waf_acl_arn]
+}
+
+output "waf_web_acl_arn" {
+  value = trim(data.local_file.waf_arn.content)
+}
