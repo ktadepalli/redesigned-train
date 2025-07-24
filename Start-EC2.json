@@ -1,0 +1,30 @@
+{
+  "schemaVersion": "0.3",
+  "description": "Start all EC2 instances with Name tag matching 'NAME-node-*' and state stopped",
+  "assumeRole": "{{ AutomationAssumeRole }}",
+  "parameters": {
+    "AutomationAssumeRole": {
+      "type": "String",
+      "description": "The ARN of the role that allows Automation to perform the actions on your behalf."
+    },
+    "Region": {
+      "type": "String",
+      "default": "ap-south-1",
+      "description": "AWS Region where EC2 instances are located"
+    }
+  },
+  "mainSteps": [
+    {
+      "name": "startInstancesByTag",
+      "action": "aws:executeScript",
+      "inputs": {
+        "Runtime": "python3.8",
+        "Handler": "start_instances",
+        "InputPayload": {
+          "region": "{{ Region }}"
+        },
+        "Script": "def start_instances(event, context):\n    import boto3\n    ec2 = boto3.client('ec2', region_name=event['region'])\n\n    # Get instances with the Name tag matching 'NAME-node-*'\n    response = ec2.describe_instances(\n        Filters=[\n            {'Name': 'tag:Name', 'Values': ['NAME-node-*']},\n            {'Name': 'instance-state-name', 'Values': ['stopped']}\n        ]\n    )\n\n    instance_ids = []\n    for reservation in response['Reservations']:\n        for instance in reservation['Instances']:\n            instance_ids.append(instance['InstanceId'])\n\n    if instance_ids:\n        ec2.start_instances(InstanceIds=instance_ids)\n        return {\"StartedInstances\": instance_ids}\n    else:\n        return {\"Message\": \"No stopped instances found with matching tag.\"}"
+      }
+    }
+  ]
+}
