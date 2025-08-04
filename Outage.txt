@@ -1,0 +1,60 @@
+import requests
+from datetime import datetime
+import pytz
+
+def is_within_dynamic_window(start_str, end_str):
+    # Convert string times to datetime objects (in IST)
+    ist = pytz.timezone("Asia/Kolkata")
+    now = datetime.now(ist)
+
+    # Expecting format: "2025-08-04 10:30", "2025-08-04 11:30"
+    start_time = ist.localize(datetime.strptime(start_str, "%Y-%m-%d %H:%M"))
+    end_time = ist.localize(datetime.strptime(end_str, "%Y-%m-%d %H:%M"))
+
+    return start_time <= now <= end_time
+
+def lambda_handler(event, context):
+    url = event.get("url")
+    start_time = event.get("outage_start")  # format: "2025-08-04 10:30"
+    end_time = event.get("outage_end")      # format: "2025-08-04 11:30"
+
+    if not all([url, start_time, end_time]):
+        return {"status": "error", "message": "Missing URL or outage window"}
+
+    try:
+        response = requests.get(url, timeout=5)
+        if response.status_code == 200:
+            return {
+                "status": "success",
+                "message": "URL is reachable"
+            }
+        elif is_within_dynamic_window(start_time, end_time):
+            return {
+                "status": "alert",
+                "code": response.status_code,
+                "message": "URL down during outage window"
+            }
+        else:
+            return {
+                "status": "fail",
+                "code": response.status_code,
+                "message": "URL down but outside outage window"
+            }
+    except requests.RequestException as e:
+        if is_within_dynamic_window(start_time, end_time):
+            return {
+                "status": "alert",
+                "message": f"Exception during outage window: {str(e)}"
+            }
+        else:
+            return {
+                "status": "error",
+                "message": f"Exception outside outage window: {str(e)}"
+            }
+
+
+{
+  "url": "https://example.com",
+  "outage_start": "2025-08-04 10:30",
+  "outage_end": "2025-08-04 11:30"
+}
