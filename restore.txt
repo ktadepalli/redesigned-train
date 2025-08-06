@@ -1,0 +1,17 @@
+restore ():
+    #after 21 line add below
+    if [ "$#" -gt 0 ]; then
+    local FILTERED_COLLECTIONS=()
+    for target in "$@"; do
+      for collection in "${COLLECTION_NAME[@]}"; do
+        if [[ "$collection" == *"$target"* ]]; then
+          FILTERED_COLLECTIONS+=("$collection")
+        fi
+      done
+    done
+    COLLECTION_NAME=("${FILTERED_COLLECTIONS[@]}")
+  else
+    # Fallback to reading using cat
+    COLLECTIONS=$(cat "$DBPATH/Database.txt")
+    COLLECTION_NAME=($COLLECTIONS)
+  fi
