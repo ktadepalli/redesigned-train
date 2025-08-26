@@ -1,0 +1,6 @@
+kubectl get pods -A -o custom-columns=\
+NAMESPACE:.metadata.namespace,\
+NAME:.metadata.name,\
+CPU:.spec.containers[*].resources.requests.cpu,\
+MEMORY:.spec.containers[*].resources.requests.memory,\
+STATUS:.status.phase
