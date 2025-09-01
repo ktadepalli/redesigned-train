@@ -145,3 +145,18 @@ spec:
                     values:
                       - cluster-autoscaler
               topologyKey: "kubernetes.io/hostname"
+---
+
+Key things you must update:
+<AWS_ACCOUNT_ID> → Your AWS account
+<ClusterAutoscalerRole> → IAM role for CA (must allow scaling ASG)
+<YOUR_REGION> → e.g., us-east-1
+<YOUR_ASG_NAME> → Your node group’s AutoScalingGroup name (EKS-managed or self-managed)
+<YOUR_EKS_CLUSTER_NAME> → Your EKS cluster name
+---
+kubectl -n kube-system annotate deployment.apps/cluster-autoscaler \
+cluster-autoscaler.kubernetes.io/safe-to-evict="false"
+---
+k8s.io/cluster-autoscaler/<cluster-name> = owned
+k8s.io/cluster-autoscaler/enabled = true
+
