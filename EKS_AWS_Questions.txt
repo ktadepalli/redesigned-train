@@ -1,0 +1,18 @@
+Use Case Summary for AWS Support
+We have an Amazon EKS cluster with managed node groups that use a custom Launch Template.
+Our automation updates the Launch Template every week with the latest AMI (for patching and security).
+We want the Launch Template to always stay current, but we do not want the node group to automatically roll/restart nodes whenever a new Launch Template version is created.
+Instead, we want to control when the rollout happens (e.g., during a scheduled maintenance window).
+What We Observed
+When we configure the node group with launch_template.version = "$Latest", EKS automatically rolls nodes as soon as the Launch Template version updates.
+We tried using force_update_version = false in Terraform, but the node group still rolls nodes automatically.
+Setting update_config.max_unavailable = 0 is not allowed (must be 1–100), so we cannot “pause” updates that way.
+Our Requirement
+We want to:
+Keep Launch Template auto-updated weekly (so $Latest always points to the new AMI).
+Prevent automatic node rollouts when the Launch Template changes.
+Trigger rollouts only when we choose (either via manual EKS node group update, instance refresh, or controlled maintenance process).
+Questions for AWS Support
+Is there a supported way to use $Latest for the Launch Template but block automatic rollouts until we explicitly trigger them?
+If not, is the only recommended approach to pin node groups to a fixed LT version and bump the version manually during maintenance?
+Are there any AWS-native features (outside of Terraform) to “pause” rollout when Launch Template updates occur?
