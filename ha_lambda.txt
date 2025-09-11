@@ -1,0 +1,158 @@
+import boto3
+import json
+import time
+
+def lambda_handler(event, context):
+    # Initialize clients
+    eks = boto3.client('eks')
+    ec2 = boto3.client('ec2')
+    ssm = boto3.client('ssm')
+    
+    # Configuration
+    CLUSTER_NAME = 'my-cluster'
+    NODE_GROUPS = ['ng1', 'ng2']
+    LAUNCH_TEMPLATE_ID = 'lt-1234567890abcdef0'  # Your LT ID
+    HEALTH_CHECK_WAIT = 900  # 15 minutes in seconds
+    MAX_RETRIES = 12
+    RETRY_DELAY = 30  # seconds
+    
+    # Store current versions for rollback
+    stored_versions = {}
+    
+    try:
+        # Step 1: Store current versions for rollback
+        print("Storing current versions for rollback...")
+        for ng_name in NODE_GROUPS:
+            response = eks.describe_nodegroup(
+                clusterName=CLUSTER_NAME,
+                nodegroupName=ng_name
+            )
+            current_version = response['nodegroup']['launchTemplate']['version']
+            stored_versions[ng_name] = current_version
+            
+            # Store in SSM for potential manual recovery
+            ssm.put_parameter(
+                Name=f'/eks/rollback/{ng_name}-version',
+                Value=current_version,
+                Type='String',
+                Overwrite=True
+            )
+            print(f"Stored version {current_version} for {ng_name}")
+        
+        # Step 2: Create new launch template version with latest AMI
+        print("Creating new launch template version...")
+        latest_ami = get_latest_eks_ami()
+        
+        new_version_response = ec2.create_launch_template_version(
+            LaunchTemplateId=LAUNCH_TEMPLATE_ID,
+            SourceVersion='$Latest',
+            LaunchTemplateData={
+                'ImageId': latest_ami
+            }
+        )
+        new_version = str(new_version_response['LaunchTemplateVersion']['VersionNumber'])
+        print(f"Created new version: {new_version}")
+        
+        # Step 3: Update node groups one by one with health checks
+        for ng_name in NODE_GROUPS:
+            print(f"\nUpdating {ng_name}...")
+            
+            # Update node group to use new version
+            eks.update_nodegroup_config(
+                clusterName=CLUSTER_NAME,
+                nodegroupName=ng_name,
+                launchTemplate={
+                    'version': new_version
+                }
+            )
+            print(f"Updated {ng_name} to version {new_version}")
+            
+            # Wait and check health
+            if not wait_for_health_check(eks, CLUSTER_NAME, ng_name, MAX_RETRIES, RETRY_DELAY):
+                print(f"Health check failed for {ng_name}! Initiating rollback...")
+                rollback_node_group(eks, CLUSTER_NAME, ng_name, stored_versions[ng_name])
+                raise Exception(f"Rollback completed for {ng_name} due to health check failure")
+            
+            print(f"{ng_name} update completed successfully")
+        
+        # Step 4: Happy Scenario - Set new version as default
+        print("\nAll node groups healthy! Setting new version as default...")
+        ec2.modify_launch_template(
+            LaunchTemplateId=LAUNCH_TEMPLATE_ID,
+            DefaultVersion=new_version
+        )
+        print(f"Version {new_version} set as default")
+        
+        return {
+            'statusCode': 200,
+            'body': f'Successfully updated to version {new_version} and set as default'
+        }
+        
+    except Exception as e:
+        print(f"Error occurred: {str(e)}")
+        
+        # Emergency rollback for any failed node groups
+        for ng_name in NODE_GROUPS:
+            try:
+                if ng_name in stored_versions:
+                    print(f"Emergency rollback for {ng_name}...")
+                    rollback_node_group(eks, CLUSTER_NAME, ng_name, stored_versions[ng_name])
+            except Exception as rollback_error:
+                print(f"Emergency rollback failed for {ng_name}: {str(rollback_error)}")
+        
+        raise e
+
+def get_latest_eks_ami():
+    ec2 = boto3.client('ec2')
+    response = ec2.describe_images(
+        Owners=['amazon'],
+        Filters=[
+            {'Name': 'name', 'Values': ['amazon-eks-node-1.27-*']},  # Your EKS version
+            {'Name': 'state', 'Values': ['available']}
+        ]
+    )
+    latest_ami = sorted(response['Images'], key=lambda x: x['CreationDate'], reverse=True)[0]
+    return latest_ami['ImageId']
+
+def wait_for_health_check(eks_client, cluster_name, nodegroup_name, max_retries, retry_delay):
+    print(f"Waiting for {nodegroup_name} to become healthy...")
+    
+    for attempt in range(max_retries):
+        try:
+            response = eks_client.describe_nodegroup(
+                clusterName=cluster_name,
+                nodegroupName=nodegroup_name
+            )
+            
+            status = response['nodegroup']['status']
+            health = response['nodegroup']['health']
+            
+            print(f"Attempt {attempt + 1}: Status={status}, Health={health['issues'] if 'issues' in health else 'OK'}")
+            
+            if status == 'ACTIVE' and not health.get('issues'):
+                print(f"{nodegroup_name} is healthy!")
+                return True
+                
+            time.sleep(retry_delay)
+            
+        except Exception as e:
+            print(f"Health check error: {str(e)}")
+            time.sleep(retry_delay)
+    
+    return False
+
+def rollback_node_group(eks_client, cluster_name, nodegroup_name, previous_version):
+    print(f"Rolling back {nodegroup_name} to version {previous_version}...")
+    
+    eks_client.update_nodegroup_config(
+        clusterName=cluster_name,
+        nodegroupName=nodegroup_name,
+        launchTemplate={
+            'version': previous_version
+        }
+    )
+    print(f"Rollback initiated for {nodegroup_name}")
+    
+    # Wait for rollback to complete
+    wait_for_health_check(eks_client, cluster_name, nodegroup_name, 20, 30)
+    print(f"Rollback completed for {nodegroup_name}")
