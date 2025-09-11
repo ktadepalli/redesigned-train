@@ -156,3 +156,104 @@ def rollback_node_group(eks_client, cluster_name, nodegroup_name, previous_versi
     # Wait for rollback to complete
     wait_for_health_check(eks_client, cluster_name, nodegroup_name, 20, 30)
     print(f"Rollback completed for {nodegroup_name}")
+=============
+iam
+=============
+
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "eks:DescribeNodegroup",
+                "eks:UpdateNodegroupConfig"
+            ],
+            "Resource": "*"
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "ec2:DescribeImages",
+                "ec2:CreateLaunchTemplateVersion",
+                "ec2:ModifyLaunchTemplate"
+            ],
+            "Resource": "*"
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "ssm:PutParameter",
+                "ssm:GetParameter"
+            ],
+            "Resource": "arn:aws:ssm:*:*:parameter/eks/rollback/*"
+        }
+    ]
+}
+
+=====
+step
+====
+
+{
+  "Comment": "EKS AMI Update with Rollback",
+  "StartAt": "StoreCurrentVersions",
+  "States": {
+    "StoreCurrentVersions": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "arn:aws:lambda:us-west-2:123456789012:function:eks-ami-updater",
+        "Payload": {
+          "action": "store_versions"
+        }
+      },
+      "Next": "CreateNewAMIVersion"
+    },
+    "CreateNewAMIVersion": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "arn:aws:lambda:us-west-2:123456789012:function:eks-ami-updater",
+        "Payload": {
+          "action": "create_version"
+        }
+      },
+      "Next": "UpdateNodeGroupsSequentially",
+      "Catch": [{
+        "ErrorEquals": ["States.ALL"],
+        "Next": "EmergencyRollback"
+      }]
+    },
+    "UpdateNodeGroupsSequentially": {
+      "Type": "Map",
+      "ItemsPath": "$.nodegroups",
+      "Parameters": {
+        "nodegroup.$": "$$.Map.Item.Value"
+      },
+      "Iterator": {
+        "StartAt": "UpdateSingleNodeGroup",
+        "States": {
+          "UpdateSingleNodeGroup": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "Parameters": {
+              "FunctionName": "arn:aws:lambda:us-west-2:123456789012:function:eks-ami-updater",
+              "Payload": {
+                "action": "update_nodegroup",
+                "nodegroup.$": "$.nodegroup"
+              }
+            },
+            "Next": "CheckHealth",
+            "Catch": [{
+              "ErrorEquals": ["States.ALL"],
+              "Next": "RollbackSingleNodeGroup"
+            }]
+          }
+        }
+      },
+      "Next": "SetDefaultVersion"
+    }
+  }
+}
+
