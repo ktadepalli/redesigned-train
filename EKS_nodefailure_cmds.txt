@@ -1,0 +1,7 @@
+# This will show FAILED events that the console hides
+aws cloudtrail lookup-events \
+  --lookup-attributes AttributeKey=EventName,AttributeValue=UpdateNodegroupConfig \
+  --start-time $(date -u -d '2 hours ago' +%Y-%m-%dT%H:%M:%SZ) \
+  --end-time $(date -u +%Y-%m-%dT%H:%M:%SZ) \
+  --query 'Events[].{Time: EventTime, User: Username, Error: ErrorCode, Message: ErrorMessage}' \
+  --output table
