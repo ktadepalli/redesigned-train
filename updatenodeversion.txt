@@ -526,3 +526,112 @@ test_event = {
 
 # Uncomment for local testing
 # print(lambda_handler(test_event, None))
+
+#V7==========
+
+import boto3
+import json
+from botocore.exceptions import ClientError
+
+def lambda_handler(event, context):
+    """
+    Troubleshooting function for EKS node group Launch Template updates
+    """
+    cluster_name = event['cluster_name']
+    nodegroup_name = event['nodegroup_name']
+    launch_template_version = event['launch_template_version']
+    
+    eks = boto3.client('eks')
+    ec2 = boto3.client('ec2')
+    
+    try:
+        # 1. Get node group details
+        print("1. Getting node group details...")
+        nodegroup_info = eks.describe_nodegroup(
+            clusterName=cluster_name,
+            nodegroupName=nodegroup_name
+        )
+        
+        lt_id = nodegroup_info['nodegroup']['launchTemplate']['id']
+        current_version = nodegroup_info['nodegroup']['launchTemplate'].get('version', 'Unknown')
+        node_role = nodegroup_info['nodegroup'].get('nodeRole', 'Unknown')
+        
+        print(f"   Current LT: {lt_id}, Version: {current_version}")
+        print(f"   Node IAM Role: {node_role}")
+        
+        # 2. Check Launch Template permissions
+        print("2. Checking Launch Template permissions...")
+        lt_details = ec2.describe_launch_template_versions(
+            LaunchTemplateId=lt_id,
+            Versions=[launch_template_version]
+        )
+        
+        lt_version_info = lt_details['LaunchTemplateVersions'][0]
+        lt_data = lt_version_info['LaunchTemplateData']
+        
+        print(f"   LT Version {launch_template_version} exists: Yes")
+        
+        # 3. Check IAM instance profile in Launch Template
+        iam_profile = lt_data.get('IamInstanceProfile', {})
+        print(f"   IAM Instance Profile: {iam_profile.get('Arn', 'Not specified')}")
+        
+        # 4. Check security groups
+        security_groups = lt_data.get('SecurityGroupIds', [])
+        print(f"   Security Groups: {security_groups}")
+        
+        # 5. Check subnet availability
+        subnets = nodegroup_info['nodegroup'].get('subnets', [])
+        print(f"   Subnets: {subnets}")
+        
+        # 6. Try the update
+        print("6. Attempting update...")
+        response = eks.update_nodegroup_version(
+            clusterName=cluster_name,
+            nodegroupName=nodegroup_name,
+            launchTemplate={
+                'id': lt_id,
+                'version': launch_template_version
+            },
+            force=True  # Force update if previous update failed
+        )
+        
+        return {
+            'statusCode': 200,
+            'body': f"Update started successfully! Update ID: {response['update']['id']}",
+            'updateId': response['update']['id']
+        }
+        
+    except ClientError as e:
+        error_code = e.response['Error']['Code']
+        error_message = e.response['Error']['Message']
+        
+        print(f"AWS Error ({error_code}): {error_message}")
+        
+        # Common error handling
+        if "UnauthorizedOperation" in error_message or "AccessDenied" in error_message:
+            suggestion = "Check IAM permissions for the node role and ensure Launch Template permissions are correct"
+        elif "InvalidParameter" in error_message:
+            suggestion = "Verify Launch Template version exists and parameters are valid"
+        elif "InsufficientInstanceCapacity" in error_message:
+            suggestion = "Try different instance type or availability zone"
+        else:
+            suggestion = "Check CloudTrail logs for detailed error information"
+        
+        return {
+            'statusCode': 500,
+            'body': f"Error: {error_message}. Suggestion: {suggestion}",
+            'errorCode': error_code
+        }
+    
+    except Exception as e:
+        return {
+            'statusCode': 500,
+            'body': f"Unexpected error: {str(e)}"
+        }
+
+# Test event
+test_event = {
+    "cluster_name": "your-eks-cluster",
+    "nodegroup_name": "your-node-group", 
+    "launch_template_version": "48"
+}
