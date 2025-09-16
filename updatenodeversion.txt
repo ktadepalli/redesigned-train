@@ -635,3 +635,96 @@ test_event = {
     "nodegroup_name": "your-node-group", 
     "launch_template_version": "48"
 }
+V8====
+
+import boto3
+import json
+
+def lambda_handler(event, context):
+    """
+    Fixes Launch Template by adding IAM instance profile and then updates node group
+    """
+    cluster_name = event['cluster_name']
+    nodegroup_name = event['nodegroup_name']
+    launch_template_version = event['launch_template_version']
+    
+    eks = boto3.client('eks')
+    ec2 = boto3.client('ec2')
+    
+    try:
+        # 1. Get node group details to find IAM role
+        print("Getting node group IAM role...")
+        nodegroup_info = eks.describe_nodegroup(
+            clusterName=cluster_name,
+            nodegroupName=nodegroup_name
+        )
+        
+        node_role_arn = nodegroup_info['nodegroup']['nodeRole']
+        # Extract role name from ARN
+        node_role_name = node_role_arn.split('/')[-1]
+        
+        # 2. Get current Launch Template ID
+        lt_id = nodegroup_info['nodegroup']['launchTemplate']['id']
+        
+        # 3. Get the specific Launch Template version details
+        print(f"Getting Launch Template version {launch_template_version}...")
+        lt_response = ec2.describe_launch_template_versions(
+            LaunchTemplateId=lt_id,
+            Versions=[launch_template_version]
+        )
+        
+        lt_data = lt_response['LaunchTemplateVersions'][0]['LaunchTemplateData']
+        
+        # 4. Create a new Launch Template version with IAM instance profile
+        print("Creating new Launch Template version with IAM instance profile...")
+        
+        # Create new version based on existing data but add IAM instance profile
+        new_lt_data = lt_data.copy()
+        new_lt_data['IamInstanceProfile'] = {
+            'Name': node_role_name  # Use the IAM role name as instance profile name
+        }
+        
+        # Remove None values that might cause API issues
+        new_lt_data = {k: v for k, v in new_lt_data.items() if v is not None}
+        
+        # Create new Launch Template version
+        new_version_response = ec2.create_launch_template_version(
+            LaunchTemplateId=lt_id,
+            LaunchTemplateData=new_lt_data,
+            VersionDescription=f"Added IAM instance profile for EKS node group {nodegroup_name}"
+        )
+        
+        new_version_number = str(new_version_response['LaunchTemplateVersion']['VersionNumber'])
+        
+        print(f"Created new Launch Template version: {new_version_number}")
+        
+        # 5. Now update node group with the fixed Launch Template version
+        print("Updating node group with fixed Launch Template version...")
+        update_response = eks.update_nodegroup_version(
+            clusterName=cluster_name,
+            nodegroupName=nodegroup_name,
+            launchTemplate={
+                'id': lt_id,
+                'version': new_version_number
+            }
+        )
+        
+        return {
+            'statusCode': 200,
+            'body': f"Success! Created version {new_version_number} with IAM profile and started update: {update_response['update']['id']}",
+            'newLaunchTemplateVersion': new_version_number,
+            'updateId': update_response['update']['id']
+        }
+        
+    except Exception as e:
+        return {
+            'statusCode': 500,
+            'body': f"Error: {str(e)}"
+        }
+
+# Test event
+test_event = {
+    "cluster_name": "your-eks-cluster",
+    "nodegroup_name": "your-node-group",
+    "launch_template_version": "48"
+}
