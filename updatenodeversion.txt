@@ -1,0 +1,236 @@
+#V1=======
+import boto3
+import os
+
+def lambda_handler(event, context):
+    eks_client = boto3.client("eks", region_name=os.environ.get("AWS_REGION", "ap-south-1"))
+    
+    cluster_name = os.environ.get("CLUSTER_NAME", "my-eks-cluster")   # set in Lambda env vars
+    nodegroup_name = os.environ.get("NODEGROUP_NAME", "my-node-group")
+    target_version = os.environ.get("TARGET_VERSION", "48")           # if Launch Template version, see note below
+    
+    try:
+        response = eks_client.update_nodegroup_version(
+            clusterName=cluster_name,
+            nodegroupName=nodegroup_name,
+            # If you mean Kubernetes version, keep this
+            # version=target_version,
+            
+            # If you mean Launch Template version, uncomment below and remove "version"
+            launchTemplate={
+                "name": nodegroup_name,   # or your LT name
+                "version": target_version
+            },
+            
+            updateConfig={
+                "maxUnavailable": 1  # rolling update strategy
+            }
+        )
+        
+        return {
+            "statusCode": 200,
+            "body": {
+                "message": "EKS Node Group update initiated",
+                "updateId": response["update"]["id"],
+                "status": response["update"]["status"]
+            }
+        }
+    
+    except Exception as e:
+        return {
+            "statusCode": 500,
+            "body": {"error": str(e)}
+        }
+#v2==================
+import boto3
+import time
+from botocore.exceptions import ClientError
+
+def lambda_handler(event, context):
+    """
+    AWS Lambda function to update an EKS node group version with rolling update strategy.
+    
+    Expects event input in the format:
+    {
+        "cluster_name": "your-cluster-name",
+        "nodegroup_name": "your-nodegroup-name",
+        "desired_version": "1.48",
+        "max_unavailable": 1
+    }
+    
+    You can also override these values with environment variables.
+    """
+    
+    # Get parameters from event or environment variables
+    cluster_name = event.get('cluster_name') 
+    nodegroup_name = event.get('nodegroup_name')
+    desired_version = event.get('desired_version', '1.48')
+    max_unavailable = event.get('max_unavailable', 1)
+    
+    # Fallback to environment variables if not in event
+    if not cluster_name:
+        cluster_name = os.environ.get('CLUSTER_NAME')
+    if not nodegroup_name:
+        nodegroup_name = os.environ.get('NODEGROUP_NAME')
+    if not desired_version:
+        desired_version = os.environ.get('DESIRED_VERSION', '1.48')
+    if not max_unavailable:
+        max_unavailable = int(os.environ.get('MAX_UNAVAILABLE', 1))
+    
+    # Validate required parameters
+    if not all([cluster_name, nodegroup_name]):
+        return {
+            'statusCode': 400,
+            'body': 'Missing required parameters: cluster_name and nodegroup_name must be provided'
+        }
+    
+    eks_client = boto3.client('eks')
+    
+    try:
+        # Check current node group status
+        print(f"Checking current status of node group '{nodegroup_name}' in cluster '{cluster_name}'...")
+        response = eks_client.describe_nodegroup(
+            clusterName=cluster_name,
+            nodegroupName=nodegroup_name
+        )
+        
+        current_status = response['nodegroup']['status']
+        current_version = response['nodegroup']['version']
+        print(f"Current version: {current_version}, Status: {current_status}")
+        
+        if current_status != 'ACTIVE':
+            error_msg = f"Node group is not in ACTIVE state. Current state: {current_status}. Aborting."
+            print(error_msg)
+            return {
+                'statusCode': 400,
+                'body': error_msg
+            }
+        
+        if current_version == desired_version:
+            message = f"Node group is already at version {desired_version}. No update needed."
+            print(message)
+            return {
+                'statusCode': 200,
+                'body': message
+            }
+        
+        # Update node group version
+        print(f"Updating node group '{nodegroup_name}' to version {desired_version}...")
+        response = eks_client.update_nodegroup_version(
+            clusterName=cluster_name,
+            nodegroupName=nodegroup_name,
+            version=desired_version,
+            force=True,
+            updateConfig={
+                'maxUnavailable': max_unavailable,
+                'type': 'RollingUpdate'
+            }
+        )
+        
+        update_id = response['update']['id']
+        print(f"Update started. Update ID: {update_id}")
+        
+        # Wait for the update to complete (with timeout)
+        timeout_seconds = 3600  # 1 hour timeout
+        start_time = time.time()
+        
+        print("Waiting for update to complete...")
+        while True:
+            # Check timeout
+            if time.time() - start_time > timeout_seconds:
+                raise TimeoutError("Update timed out after 1 hour")
+            
+            response = eks_client.describe_nodegroup(
+                clusterName=cluster_name,
+                nodegroupName=nodegroup_name
+            )
+            
+            status = response['nodegroup']['status']
+            update_status = response['nodegroup'].get('updateStatus', 'No update in progress')
+            
+            print(f"Current status: {status}, Update status: {update_status}")
+            
+            if status == 'ACTIVE' and update_status == 'Successful':
+                message = "Update completed successfully!"
+                print(message)
+                return {
+                    'statusCode': 200,
+                    'body': message,
+                    'updateId': update_id
+                }
+            elif status == 'DEGRADED' or update_status == 'Failed':
+                error_msg = "Update failed or node group is degraded. Check AWS console for details."
+                print(error_msg)
+                return {
+                    'statusCode': 500,
+                    'body': error_msg,
+                    'updateId': update_id
+                }
+            elif update_status == 'InProgress':
+                # Still in progress, wait before checking again
+                time.sleep(30)
+            else:
+                # Handle other statuses
+                time.sleep(30)
+                
+    except ClientError as e:
+        error_msg = f"AWS API error occurred: {e.response['Error']['Message']}"
+        print(error_msg)
+        return {
+            'statusCode': 500,
+            'body': error_msg
+        }
+    except TimeoutError as e:
+        error_msg = str(e)
+        print(error_msg)
+        return {
+            'statusCode': 504,
+            'body': error_msg
+        }
+    except Exception as e:
+        error_msg = f"Unexpected error: {str(e)}"
+        print(error_msg)
+        return {
+            'statusCode': 500,
+            'body': error_msg
+        }
+
+# For local testing (if needed)
+if __name__ == "__main__":
+    test_event = {
+        "cluster_name": "your-test-cluster",
+        "nodegroup_name": "your-test-nodegroup",
+        "desired_version": "1.48",
+        "max_unavailable": 1
+    }
+    lambda_handler(test_event, None)
+
+#v3=== from local
+import boto3
+
+# Initialize EKS client
+eks_client = boto3.client("eks", region_name="ap-south-1")  # change region if needed
+
+# Variables
+cluster_name = "my-eks-cluster"   # Replace with your cluster name
+nodegroup_name = "my-node-group"  # Replace with your node group name
+target_version = "48"             # Replace with your required version
+
+try:
+    response = eks_client.update_nodegroup_version(
+        clusterName=cluster_name,
+        nodegroupName=nodegroup_name,
+        version=target_version,
+        updateConfig={
+            "maxUnavailable": 1,  # rolling update: only 1 node unavailable at a time
+        }
+    )
+
+    print("Update started successfully!")
+    print("Update ID:", response["update"]["id"])
+    print("Status:", response["update"]["status"])
+
+except Exception as e:
+    print("Error while updating node group:", str(e))
+
+
