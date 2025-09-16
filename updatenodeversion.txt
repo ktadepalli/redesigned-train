@@ -231,3 +231,224 @@ except Exception as e:
     print("Error while updating node group:", str(e))
 
 
+#V5=======
+import boto3
+import os
+import time
+from botocore.exceptions import ClientError
+
+def lambda_handler(event, context):
+    """
+    AWS Lambda function to update an EKS node group by changing Launch Template version.
+    
+    Expects event input in the format:
+    {
+        "cluster_name": "your-cluster-name",
+        "nodegroup_name": "your-nodegroup-name",
+        "launch_template_version": "48",
+        "max_unavailable": 1,
+        "max_unavailable_percentage": 50
+    }
+    
+    You can also override these values with environment variables.
+    """
+    
+    # Get parameters from event or environment variables
+    cluster_name = event.get('cluster_name') 
+    nodegroup_name = event.get('nodegroup_name')
+    launch_template_version = event.get('launch_template_version', '48')
+    max_unavailable = event.get('max_unavailable')
+    max_unavailable_percentage = event.get('max_unavailable_percentage', 50)
+    
+    # Fallback to environment variables if not in event
+    if not cluster_name:
+        cluster_name = os.environ.get('CLUSTER_NAME')
+    if not nodegroup_name:
+        nodegroup_name = os.environ.get('NODEGROUP_NAME')
+    if not launch_template_version:
+        launch_template_version = os.environ.get('LAUNCH_TEMPLATE_VERSION', '48')
+    if max_unavailable is None:
+        max_unavailable = os.environ.get('MAX_UNAVAILABLE')
+    if not max_unavailable_percentage:
+        max_unavailable_percentage = int(os.environ.get('MAX_UNAVAILABLE_PERCENTAGE', 50))
+    
+    # Validate required parameters
+    if not all([cluster_name, nodegroup_name]):
+        return {
+            'statusCode': 400,
+            'body': 'Missing required parameters: cluster_name and nodegroup_name must be provided'
+        }
+    
+    eks_client = boto3.client('eks')
+    
+    try:
+        # First, get the current node group configuration to extract the Launch Template ID
+        print(f"Getting current configuration for node group '{nodegroup_name}'...")
+        describe_response = eks_client.describe_nodegroup(
+            clusterName=cluster_name,
+            nodegroupName=nodegroup_name
+        )
+        
+        current_status = describe_response['nodegroup']['status']
+        print(f"Current node group status: {current_status}")
+        
+        if current_status != 'ACTIVE':
+            error_msg = f"Node group is not in ACTIVE state. Current state: {current_status}. Aborting."
+            print(error_msg)
+            return {
+                'statusCode': 400,
+                'body': error_msg
+            }
+        
+        # Extract Launch Template information
+        launch_template = describe_response['nodegroup'].get('launchTemplate')
+        if not launch_template:
+            error_msg = "Node group is not using a Launch Template. This function only supports Launch Template updates."
+            print(error_msg)
+            return {
+                'statusCode': 400,
+                'body': error_msg
+            }
+        
+        current_launch_template_id = launch_template['id']
+        current_launch_template_version = launch_template.get('version', 'Unknown')
+        
+        print(f"Current Launch Template: {current_launch_template_id}, Version: {current_launch_template_version}")
+        print(f"Desired new version: {launch_template_version}")
+        
+        if current_launch_template_version == launch_template_version:
+            message = f"Node group is already using Launch Template version {launch_template_version}. No update needed."
+            print(message)
+            return {
+                'statusCode': 200,
+                'body': message
+            }
+        
+        # Build the update config
+        update_config = {}
+        if max_unavailable is not None:
+            update_config['maxUnavailable'] = int(max_unavailable)
+        if max_unavailable_percentage is not None:
+            update_config['maxUnavailablePercentage'] = int(max_unavailable_percentage)
+        
+        # Set update type to RollingUpdate if any update config is provided
+        if update_config:
+            update_config['type'] = 'RollingUpdate'
+        
+        # Update node group with new Launch Template version
+        print(f"Updating node group '{nodegroup_name}' to use Launch Template version {launch_template_version}...")
+        
+        # Prepare the update parameters
+        update_params = {
+            'clusterName': cluster_name,
+            'nodegroupName': nodegroup_name,
+            'launchTemplate': {
+                'version': launch_template_version,
+                'id': current_launch_template_id
+            }
+        }
+        
+        # Only add updateConfig if we have rolling update configuration
+        if update_config:
+            update_params['updateConfig'] = update_config
+        
+        update_response = eks_client.update_nodegroup_config(**update_params)
+        
+        update_id = update_response['update']['id']
+        print(f"Update started. Update ID: {update_id}")
+        print(f"Update config: {update_config}")
+        
+        # Wait for the update to complete (with timeout)
+        timeout_seconds = 3600  # 1 hour timeout
+        start_time = time.time()
+        max_attempts = 120  # Maximum number of checks (30-second intervals)
+        attempts = 0
+        
+        print("Waiting for update to complete...")
+        while attempts < max_attempts:
+            # Check timeout
+            if time.time() - start_time > timeout_seconds:
+                raise TimeoutError("Update timed out after 1 hour")
+            
+            response = eks_client.describe_nodegroup(
+                clusterName=cluster_name,
+                nodegroupName=nodegroup_name
+            )
+            
+            status = response['nodegroup']['status']
+            update_status = response['nodegroup'].get('updateStatus', 'No update in progress')
+            
+            print(f"Current status: {status}, Update status: {update_status}")
+            
+            if status == 'ACTIVE' and update_status == 'Successful':
+                # Verify the new Launch Template version is active
+                current_lt = response['nodegroup'].get('launchTemplate', {})
+                current_lt_version = current_lt.get('version', 'Unknown')
+                
+                if current_lt_version == launch_template_version:
+                    message = f"Update completed successfully! Now using Launch Template version {launch_template_version}"
+                    print(message)
+                    return {
+                        'statusCode': 200,
+                        'body': message,
+                        'updateId': update_id,
+                        'newLaunchTemplateVersion': current_lt_version
+                    }
+                else:
+                    message = f"Update completed but version mismatch. Expected: {launch_template_version}, Actual: {current_lt_version}"
+                    print(message)
+                    return {
+                        'statusCode': 200,
+                        'body': message,
+                        'updateId': update_id,
+                        'expectedVersion': launch_template_version,
+                        'actualVersion': current_lt_version
+                    }
+            elif status == 'DEGRADED' or update_status == 'Failed':
+                error_msg = "Update failed or node group is degraded. Check AWS console for details."
+                print(error_msg)
+                return {
+                    'statusCode': 500,
+                    'body': error_msg,
+                    'updateId': update_id
+                }
+            
+            # Still in progress, wait before checking again
+            time.sleep(30)
+            attempts += 1
+            
+        # If we reach here, the update took too long
+        raise TimeoutError("Update did not complete within the expected time")
+                
+    except ClientError as e:
+        error_msg = f"AWS API error occurred: {e.response['Error']['Message']}"
+        print(error_msg)
+        return {
+            'statusCode': 500,
+            'body': error_msg
+        }
+    except TimeoutError as e:
+        error_msg = str(e)
+        print(error_msg)
+        return {
+            'statusCode': 504,
+            'body': error_msg
+        }
+    except Exception as e:
+        error_msg = f"Unexpected error: {str(e)}"
+        print(error_msg)
+        return {
+            'statusCode': 500,
+            'body': error_msg
+        }
+
+# For local testing (if needed)
+if __name__ == "__main__":
+    test_event = {
+        "cluster_name": "your-test-cluster",
+        "nodegroup_name": "your-test-nodegroup",
+        "launch_template_version": "48",
+        "max_unavailable": 1
+    }
+    result = lambda_handler(test_event, None)
+    print(result)
