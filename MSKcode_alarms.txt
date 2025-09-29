@@ -1,0 +1,113 @@
+# Replace with your MSK cluster name
+variable "msk_cluster_name" {
+  default = "my-msk-cluster"
+}
+
+# SNS Topic for alerts (email, Slack integration, etc.)
+resource "aws_sns_topic" "msk_alerts" {
+  name = "msk-alerts-topic"
+}
+
+# Subscribe your email for testing
+resource "aws_sns_topic_subscription" "email" {
+  topic_arn = aws_sns_topic.msk_alerts.arn
+  protocol  = "email"
+  endpoint  = "your-email@example.com"
+}
+
+# Alarm: Disk usage crossing 75% (early warning before AWS auto-expands at ~85%)
+resource "aws_cloudwatch_metric_alarm" "msk_disk_usage" {
+  alarm_name          = "MSK-DiskUsage-High"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 2
+  metric_name         = "KafkaDataLogsDiskUsedPercent"
+  namespace           = "AWS/Kafka"
+  period              = 300
+  statistic           = "Average"
+  threshold           = 75
+  alarm_description   = "MSK broker disk usage > 75% (check topic retention or consumers)"
+  alarm_actions       = [aws_sns_topic.msk_alerts.arn]
+
+  dimensions = {
+    ClusterName = var.msk_cluster_name
+  }
+}
+
+# Alarm: Under-replicated partitions
+resource "aws_cloudwatch_metric_alarm" "msk_under_replicated" {
+  alarm_name          = "MSK-UnderReplicatedPartitions"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+  metric_name         = "UnderReplicatedPartitions"
+  namespace           = "AWS/Kafka"
+  period              = 300
+  statistic           = "Maximum"
+  threshold           = 0
+  alarm_description   = "MSK cluster has under-replicated partitions"
+  alarm_actions       = [aws_sns_topic.msk_alerts.arn]
+
+  dimensions = {
+    ClusterName = var.msk_cluster_name
+  }
+}
+
+# Alarm: Consumer lag (per consumer group)
+resource "aws_cloudwatch_metric_alarm" "msk_consumer_lag" {
+  alarm_name          = "MSK-ConsumerLag-High"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 2
+  metric_name         = "KafkaConsumerLag"
+  namespace           = "AWS/Kafka"
+  period              = 300
+  statistic           = "Maximum"
+  threshold           = 100000   # adjust based on your tolerance
+  alarm_description   = "Consumer lag too high for MSK cluster"
+  alarm_actions       = [aws_sns_topic.msk_alerts.arn]
+
+  dimensions = {
+    ClusterName    = var.msk_cluster_name
+    ConsumerGroup  = "my-consumer-group" # <-- adjust for your group
+    Topic          = "my-topic"          # <-- adjust for your topic
+  }
+}
+#-============
+
+resource "aws_msk_cluster" "pega_msk" {
+  cluster_name           = "pega-msk-cluster"
+  kafka_version          = "3.6.0"
+  number_of_broker_nodes = 3
+  enhanced_monitoring    = "PER_BROKER"
+
+  broker_node_group_info {
+    instance_type = "kafka.m5.large"
+    client_subnets = [
+      "subnet-xxxxxxxx",
+      "subnet-yyyyyyyy",
+      "subnet-zzzzzzzz"
+    ]
+    security_groups = ["sg-xxxxxxxx"]
+
+    storage_info {
+      ebs_storage_info {
+        volume_size = 100   # baseline 100 GiB per broker
+      }
+    }
+  }
+
+  # Enable Elastic Storage mode
+  cluster_mode {
+    storage_mode = "ELASTIC_STORAGE"
+  }
+
+  encryption_info {
+    encryption_in_transit {
+      client_broker = "TLS"
+      in_cluster    = true
+    }
+  }
+
+  tags = {
+    Environment = "Production"
+    Project     = "PegaMSK"
+  }
+}
