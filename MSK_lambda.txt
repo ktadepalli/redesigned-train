@@ -1,0 +1,517 @@
+# variables.tf
+variable "cluster_name" {
+  description = "Name of the MSK cluster"
+  type        = string
+  default     = "my-msk-cluster"
+}
+
+variable "kafka_version" {
+  description = "Kafka version"
+  type        = string
+  default     = "3.4.0"
+}
+
+variable "broker_instance_type" {
+  description = "EC2 instance type for Kafka brokers"
+  type        = string
+  default     = "kafka.m5.large"
+}
+
+variable "broker_ebs_volume_size" {
+  description = "Initial EBS volume size per broker (GB)"
+  type        = number
+  default     = 1000
+}
+
+# main.tf
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+  }
+}
+
+provider "aws" {
+  region = "us-west-2"
+}
+
+# VPC and Networking
+resource "aws_vpc" "msk_vpc" {
+  cidr_block           = "10.0.0.0/16"
+  enable_dns_hostnames = true
+  enable_dns_support   = true
+
+  tags = {
+    Name = "${var.cluster_name}-vpc"
+  }
+}
+
+resource "aws_subnet" "msk_subnets" {
+  count = 3
+
+  vpc_id            = aws_vpc.msk_vpc.id
+  cidr_block        = cidrsubnet(aws_vpc.msk_vpc.cidr_block, 8, count.index)
+  availability_zone = element(data.aws_availability_zones.available.names, count.index)
+
+  tags = {
+    Name = "${var.cluster_name}-subnet-${count.index + 1}"
+  }
+}
+
+data "aws_availability_zones" "available" {
+  state = "available"
+}
+
+# MSK Cluster
+resource "aws_msk_cluster" "main" {
+  cluster_name           = var.cluster_name
+  kafka_version          = var.kafka_version
+  number_of_broker_nodes = 3
+
+  broker_node_group_info {
+    instance_type   = var.broker_instance_type
+    client_subnets  = aws_subnet.msk_subnets[*].id
+    security_groups = [aws_security_group.msk_sg.id]
+
+    storage_info {
+      ebs_storage_info {
+        volume_size = var.broker_ebs_volume_size
+      }
+    }
+  }
+
+  encryption_info {
+    encryption_at_rest_kms_key_arn = aws_kms_key.msk_key.arn
+  }
+
+  open_monitoring {
+    prometheus {
+      jmx_exporter {
+        enabled_in_broker = true
+      }
+      node_exporter {
+        enabled_in_broker = true
+      }
+    }
+  }
+
+  logging_info {
+    broker_logs {
+      cloudwatch_logs {
+        enabled   = true
+        log_group = aws_cloudwatch_log_group.msk_logs.name
+      }
+    }
+  }
+
+  tags = {
+    Environment = "production"
+  }
+}
+
+# KMS Key for encryption
+resource "aws_kms_key" "msk_key" {
+  description             = "KMS key for MSK cluster encryption"
+  deletion_window_in_days = 7
+  enable_key_rotation     = true
+}
+
+# Security Group
+resource "aws_security_group" "msk_sg" {
+  name        = "${var.cluster_name}-sg"
+  description = "Security group for MSK cluster"
+  vpc_id      = aws_vpc.msk_vpc.id
+
+  ingress {
+    from_port   = 9092
+    to_port     = 9098
+    protocol    = "tcp"
+    cidr_blocks = [aws_vpc.msk_vpc.cidr_block]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+#=========
+
+# msk_autoscaling.tf
+
+# CloudWatch Alarms for Storage Monitoring
+resource "aws_cloudwatch_metric_alarm" "msk_disk_used" {
+  alarm_name          = "${var.cluster_name}-disk-used-percent"
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  evaluation_periods  = "2"
+  metric_name         = "KafkaDataLogsDiskUsed"
+  namespace           = "AWS/Kafka"
+  period              = "300"
+  statistic           = "Average"
+  threshold           = "80" # Scale when disk usage reaches 80%
+  alarm_description   = "Monitor MSK broker disk usage for auto-scaling"
+
+  dimensions = {
+    ClusterName = aws_msk_cluster.main.cluster_name
+  }
+
+  alarm_actions = [
+    aws_sns_topic.msk_alerts.arn,
+    aws_lambda_function.msk_storage_scaler.arn
+  ]
+
+  tags = {
+    Name = "${var.cluster_name}-disk-usage-alarm"
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "msk_disk_free" {
+  alarm_name          = "${var.cluster_name}-disk-free-low"
+  comparison_operator = "LessThanOrEqualToThreshold"
+  evaluation_periods  = "2"
+  metric_name         = "KafkaDataLogsDiskFree"
+  namespace           = "AWS/Kafka"
+  period              = "300"
+  statistic           = "Minimum"
+  threshold           = "20" # Alert when free space is less than 20GB
+  alarm_description   = "Monitor MSK broker free disk space"
+
+  dimensions = {
+    ClusterName = aws_msk_cluster.main.cluster_name
+  }
+
+  alarm_actions = [aws_sns_topic.msk_alerts.arn]
+
+  tags = {
+    Name = "${var.cluster_name}-disk-free-alarm"
+  }
+}
+
+# SNS Topic for Alerts
+resource "aws_sns_topic" "msk_alerts" {
+  name = "${var.cluster_name}-storage-alerts"
+}
+
+resource "aws_sns_topic_subscription" "msk_alerts_email" {
+  topic_arn = aws_sns_topic.msk_alerts.arn
+  protocol  = "email"
+  endpoint  = "alerts@example.com" # Replace with your email
+}
+
+#lambda TF
+
+# lambda.tf
+
+# IAM Role for Lambda
+resource "aws_iam_role" "msk_scaler_lambda" {
+  name = "${var.cluster_name}-scaler-lambda-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "lambda.amazonaws.com"
+        }
+      }
+    ]
+  })
+}
+
+# IAM Policy for Lambda
+resource "aws_iam_policy" "msk_scaler_policy" {
+  name        = "${var.cluster_name}-scaler-policy"
+  description = "Policy for MSK storage auto-scaling Lambda"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "kafka:DescribeCluster",
+          "kafka:ListClusters",
+          "kafka:UpdateBrokerStorage",
+          "ec2:DescribeVolumes",
+          "cloudwatch:GetMetricStatistics",
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents"
+        ]
+        Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "kms:DescribeKey",
+          "kms:GenerateDataKey"
+        ]
+        Resource = aws_kms_key.msk_key.arn
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "msk_scaler_attachment" {
+  role       = aws_iam_role.msk_scaler_lambda.name
+  policy_arn = aws_iam_policy.msk_scaler_policy.arn
+}
+
+# Lambda Function
+resource "aws_lambda_function" "msk_storage_scaler" {
+  filename      = "msk_storage_scaler.zip"
+  function_name = "${var.cluster_name}-storage-scaler"
+  role          = aws_iam_role.msk_scaler_lambda.arn
+  handler       = "index.lambda_handler"
+  runtime       = "python3.9"
+  timeout       = 300
+
+  environment {
+    variables = {
+      CLUSTER_ARN      = aws_msk_cluster.main.arn
+      SCALE_INCREMENT  = "500" # GB to add when scaling
+      MAX_VOLUME_SIZE  = "16000" # Maximum EBS volume size (16TB)
+      SCALE_THRESHOLD  = "80"   # Scale when usage exceeds this percentage
+    }
+  }
+
+  tags = {
+    Name = "${var.cluster_name}-storage-scaler"
+  }
+}
+
+# EventBridge Rule to trigger Lambda
+resource "aws_cloudwatch_event_rule" "msk_scale_trigger" {
+  name        = "${var.cluster_name}-scale-trigger"
+  description = "Trigger MSK storage scaling on high disk usage"
+
+  event_pattern = jsonencode({
+    source      = ["aws.cloudwatch"]
+    detail-type = ["CloudWatch Alarm State Change"]
+    detail = {
+      alarmName = [aws_cloudwatch_metric_alarm.msk_disk_used.alarm_name]
+      state = {
+        value = ["ALARM"]
+      }
+    }
+  })
+}
+
+resource "aws_cloudwatch_event_target" "msk_scale_lambda" {
+  rule = aws_cloudwatch_event_rule.msk_scale_trigger.name
+  arn  = aws_lambda_function.msk_storage_scaler.arn
+}
+
+resource "aws_lambda_permission" "allow_cloudwatch" {
+  statement_id  = "AllowExecutionFromCloudWatch"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.msk_storage_scaler.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.msk_scale_trigger.arn
+}
+
+#LAMBDA code
+
+# msk_storage_scaler.py
+import boto3
+import os
+import json
+import logging
+
+# Set up logging
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+
+# Initialize clients
+kafka = boto3.client('kafka')
+cloudwatch = boto3.client('cloudwatch')
+
+def lambda_handler(event, context):
+    """
+    Lambda function to scale MSK broker storage
+    """
+    try:
+        cluster_arn = os.environ['CLUSTER_ARN']
+        scale_increment = int(os.environ.get('SCALE_INCREMENT', '500'))
+        max_volume_size = int(os.environ.get('MAX_VOLUME_SIZE', '16000'))
+        scale_threshold = int(os.environ.get('SCALE_THRESHOLD', '80'))
+        
+        logger.info(f"Processing scaling event for cluster: {cluster_arn}")
+        
+        # Get cluster details
+        cluster_info = kafka.describe_cluster(ClusterArn=cluster_arn)
+        cluster_name = cluster_info['ClusterInfo']['ClusterName']
+        
+        # Get current broker storage info
+        broker_storage = get_broker_storage_info(cluster_arn)
+        
+        # Check if scaling is needed
+        if should_scale_storage(broker_storage, scale_threshold):
+            scale_storage(cluster_arn, broker_storage, scale_increment, max_volume_size)
+        else:
+            logger.info("No scaling needed at this time")
+            
+        return {
+            'statusCode': 200,
+            'body': json.dumps('MSK storage scaling check completed')
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in MSK storage scaling: {str(e)}")
+        raise e
+
+def get_broker_storage_info(cluster_arn):
+    """
+    Get current broker storage information and metrics
+    """
+    # Get cluster brokers
+    brokers = kafka.list_brokers(ClusterArn=cluster_arn)
+    
+    storage_info = []
+    
+    for broker in brokers['BrokerInfoList']:
+        broker_id = broker['BrokerId']
+        
+        # Get current disk usage metrics
+        disk_usage = get_broker_disk_usage(cluster_arn, broker_id)
+        
+        storage_info.append({
+            'broker_id': broker_id,
+            'current_volume_size': broker.get('BrokerSize', {}).get('EbsVolumeSize', 0),
+            'disk_usage_percent': disk_usage
+        })
+    
+    return storage_info
+
+def get_broker_disk_usage(cluster_arn, broker_id):
+    """
+    Get disk usage percentage for a broker from CloudWatch
+    """
+    try:
+        cluster_info = kafka.describe_cluster(ClusterArn=cluster_arn)
+        cluster_name = cluster_info['ClusterInfo']['ClusterName']
+        
+        response = cloudwatch.get_metric_statistics(
+            Namespace='AWS/Kafka',
+            MetricName='KafkaDataLogsDiskUsed',
+            Dimensions=[
+                {
+                    'Name': 'ClusterName',
+                    'Value': cluster_name
+                },
+                {
+                    'Name': 'Broker ID',
+                    'Value': str(broker_id)
+                }
+            ],
+            StartTime=datetime.utcnow() - timedelta(minutes=10),
+            EndTime=datetime.utcnow(),
+            Period=300,
+            Statistics=['Average']
+        )
+        
+        if response['Datapoints']:
+            # Get the latest datapoint
+            latest = max(response['Datapoints'], key=lambda x: x['Timestamp'])
+            return latest['Average']
+        else:
+            return 0
+            
+    except Exception as e:
+        logger.warning(f"Could not get disk usage for broker {broker_id}: {str(e)}")
+        return 0
+
+def should_scale_storage(broker_storage, threshold):
+    """
+    Determine if storage scaling is needed
+    """
+    for broker in broker_storage:
+        if broker['disk_usage_percent'] >= threshold:
+            logger.info(f"Broker {broker['broker_id']} disk usage {broker['disk_usage_percent']}% exceeds threshold {threshold}%")
+            return True
+    return False
+
+def scale_storage(cluster_arn, broker_storage, increment, max_size):
+    """
+    Scale up broker storage
+    """
+    try:
+        # Calculate new volume size
+        current_size = broker_storage[0]['current_volume_size']  # Assuming uniform broker sizes
+        new_size = current_size + increment
+        
+        if new_size > max_size:
+            logger.warning(f"Calculated size {new_size}GB exceeds maximum {max_size}GB")
+            new_size = max_size
+        
+        if new_size == current_size:
+            logger.info("Storage already at maximum size")
+            return
+        
+        logger.info(f"Scaling storage from {current_size}GB to {new_size}GB")
+        
+        # Update broker storage
+        response = kafka.update_broker_storage(
+            ClusterArn=cluster_arn,
+            CurrentVersion=get_current_configuration_version(cluster_arn),
+            TargetBrokerEBSVolumeInfo=[
+                {
+                    'KafkaBrokerNodeId': broker['broker_id'],
+                    'ProvisionedThroughput': {
+                        'Enabled': False
+                    },
+                    'VolumeSizeGB': new_size
+                } for broker in broker_storage
+            ]
+        )
+        
+        logger.info(f"Storage scaling initiated: {response}")
+        
+    except Exception as e:
+        logger.error(f"Failed to scale storage: {str(e)}")
+        raise e
+
+def get_current_configuration_version(cluster_arn):
+    """
+    Get current configuration version for the cluster
+    """
+    response = kafka.describe_cluster(ClusterArn=cluster_arn)
+    return response['ClusterInfo']['CurrentVersion']
+
+#Outputs
+
+# outputs.tf
+output "msk_cluster_arn" {
+  description = "ARN of the MSK cluster"
+  value       = aws_msk_cluster.main.arn
+}
+
+output "msk_cluster_name" {
+  description = "Name of the MSK cluster"
+  value       = aws_msk_cluster.main.cluster_name
+}
+
+output "msk_bootstrap_servers" {
+  description = "Bootstrap servers for the MSK cluster"
+  value       = aws_msk_cluster.main.bootstrap_brokers
+}
+
+output "msk_zookeeper_connect_string" {
+  description = "Zookeeper connect string"
+  value       = aws_msk_cluster.main.zookeeper_connect_string
+}
+
+output "lambda_function_arn" {
+  description = "ARN of the storage scaling Lambda function"
+  value       = aws_lambda_function.msk_storage_scaler.arn
+}
+
+output "sns_topic_arn" {
+  description = "ARN of the SNS topic for alerts"
+  value       = aws_sns_topic.msk_alerts.arn
+}
