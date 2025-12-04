@@ -18,3 +18,31 @@ nodeadm:
           "602401143452.dkr.ecr.ap-south-1.amazonaws.com":
             endpoint:
               - "${private_registry_mirror}"   # your org internal mirror
+
+
+##############################
+
+#cloud-config
+nodeadm:
+  cluster:
+    name: "${cluster_name}"
+    apiServerEndpoint: "${api_endpoint}"
+    certificateAuthority: "${ca_data}"
+  # do not set kubelet.extraArgs here if you want them injected from SSM file;
+  # you can also set static ones here (pause image fallback)
+  kubelet:
+    extraArgs:
+      pod-infra-container-image: "${pause_image}"
+
+runcmd:
+  # 1) ensure aws cli v2 exists (adjust if your AMI already has it)
+  - [ sh, -c, "command -v aws >/dev/null 2>&1 || yum -y install awscli || true" ]
+
+  # 2) small script to fetch SSM params and create an env file
+  - [ sh, -c, "cat >/opt/fetch-ssm-and-init.sh <<'EOF'\n#!/bin/bash\nset -e\nREGION='${region}'\n# list parameters you need\nPARAMS=(/myapp/pause_image /myapp/extra_kubelet_args /myapp/containerd_mirror)\nOUTFILE=/etc/eks/ssm-params.env\necho \"# SSM parameters fetched on \$(date)\" > \$OUTFILE\nfor p in \"${PARAMS[@]}\"; do\n  # use --with-decryption if SecureString\n  val=$(aws ssm get-parameter --region \$REGION --name \"\$p\" --with-decryption --query Parameter.Value --output text 2>/dev/null || echo \"\")\n  # sanitize key name to env var style\n  key=\$(basename \"\$p\" | tr '/.-' '_' | tr '[:lower:]' '[:upper:]')\n  if [ -n \"\$val\" ]; then\n    echo \"\$key='\$val'\" >> \$OUTFILE\n  fi\ndone\n# make sure file readable\nchmod 640 \$OUTFILE\n# optionally source the file to create env var for this script\n. \$OUTFILE\n# If you want to override nodeadm settings, create containerd config file here using $CONTAINERD_MIRROR etc.\n# Finally run nodeadm init to join cluster (manual init to ensure SSM values used first)\nif command -v nodeadm >/dev/null 2>&1; then\n  sudo nodeadm init || true\nelse\n  echo \"nodeadm not found; systemd should run it later\"\nfi\nEOF" ]
+
+  # 3) run the ssm fetch script in background (or foreground) - run it in foreground so it completes before other runcmds finish
+  - [ sh, -c, "bash /opt/fetch-ssm-and-init.sh > /var/log/fetch-ssm.log 2>&1" ]
+
+final_message: "SSM fetch + nodeadm bootstrap complete"
+
