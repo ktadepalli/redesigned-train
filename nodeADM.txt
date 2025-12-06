@@ -46,3 +46,72 @@ runcmd:
 
 final_message: "SSM fetch + nodeadm bootstrap complete"
 
+=========================
+
+
+eks_managed_node_groups = {
+  example = {
+    instance_types = ["m6i.large"]
+    ami_type       = "AL2023_x86_64_STANDARD"
+
+    min_size    = 2
+    max_size    = 5
+    desired_size = 2
+
+    cloudinit_pre_nodeadm = [
+      ### 1️⃣ Fetch SSM params BEFORE nodeadm runs
+      {
+        content_type = "text/x-shellscript"
+        content      = <<-EOT
+          #!/bin/bash
+          set -euo pipefail
+
+          REGION="${var.region}"
+
+          # Fetch SSM params (SecureString supported)
+          PAUSE_IMAGE=$(aws ssm get-parameter --region $REGION --name "${var.ssm_pause_param}" --with-decryption --query Parameter.Value --output text)
+          MIRROR_URL=$(aws ssm get-parameter --region $REGION --name "${var.ssm_mirror_param}" --with-decryption --query Parameter.Value --output text)
+          EXTRA_KUBELET_ARGS=$(aws ssm get-parameter --region $REGION --name "${var.ssm_kubelet_args_param}" --with-decryption --query Parameter.Value --output text || true)
+
+          echo "PAUSE_IMAGE=$PAUSE_IMAGE" >> /etc/eks/ssm.env
+          echo "MIRROR_URL=$MIRROR_URL" >> /etc/eks/ssm.env
+          echo "EXTRA_KUBELET_ARGS=$EXTRA_KUBELET_ARGS" >> /etc/eks/ssm.env
+        EOT
+      },
+
+      ### 2️⃣ Containerd mirror override (critical for your restricted org)
+      {
+        content_type = "text/cloud-config"
+        content      = <<-EOT
+          #cloud-config
+          write_files:
+            - path: /etc/containerd/config.toml.d/99-mirror.conf
+              permissions: "0644"
+              owner: root:root
+              content: |
+                [plugins."io.containerd.grpc.v1.cri".registry.mirrors."602401143452.dkr.ecr.${var.region}.amazonaws.com"]
+                  endpoint = ["$(cat /etc/eks/ssm.env | grep MIRROR_URL | cut -d'=' -f2)"]
+        EOT
+      },
+
+      ### 3️⃣ Override nodeadm NodeConfig to inject pause image + kubelet args
+      {
+        content_type = "application/node.eks.aws"
+        content      = <<-EOT
+          ---
+          apiVersion: node.eks.aws/v1alpha1
+          kind: NodeConfig
+          spec:
+            cluster:
+              name: ${cluster_name}
+            kubelet:
+              extraArgs:
+                pod-infra-container-image: "$(cat /etc/eks/ssm.env | grep PAUSE_IMAGE | cut -d'=' -f2)"
+                $(cat /etc/eks/ssm.env | grep EXTRA_KUBELET_ARGS | cut -d'=' -f2)
+        EOT
+      }
+    ]
+  }
+}
+
+
