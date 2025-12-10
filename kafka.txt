@@ -45,3 +45,31 @@ PEGA
 ~/kafka_2.13-3.6.0/bin/kafka-acls.sh --bootstrap-server <MSK_BOOTSTRAP> \
   --command-config ~/client.properties \
   --add --allow-principal "User:<PEGA_SCRAM_USER>" --operation DESCRIBE --topic "<TOPIC_PATTERN>"
+
+
+-------
+
+--------
+
+
+
+PEGA_USER="<pega-scram-username>"          # the Pega SCRAM username (not principal)
+PEGA_PRINCIPAL="User:${PEGA_USER}"
+TOPIC_PATTERN="pega.metrics.*"             # or exact topic name(s)
+PEGA_CONSUMER_GROUP="<pega-consumer-group>"
+
+# 1) allow WRITE for producer on topics
+~/kafka_2.13-3.6.0/bin/kafka-acls.sh --bootstrap-server <MSK_BOOTSTRAP> \
+  --command-config ~/admin-client.properties \
+  --add --allow-principal "${PEGA_PRINCIPAL}" --operation WRITE --topic "${TOPIC_PATTERN}"
+
+# 2) allow READ (topic + group) for consumer
+~/kafka_2.13-3.6.0/bin/kafka-acls.sh --bootstrap-server <MSK_BOOTSTRAP> \
+  --command-config ~/admin-client.properties \
+  --add --allow-principal "${PEGA_PRINCIPAL}" --operation READ --topic "${TOPIC_PATTERN}" --group "${PEGA_CONSUMER_GROUP}"
+
+# 3) allow DESCRIBE (metadata)
+~/kafka_2.13-3.6.0/bin/kafka-acls.sh --bootstrap-server <MSK_BOOTSTRAP> \
+  --command-config ~/admin-client.properties \
+  --add --allow-principal "${PEGA_PRINCIPAL}" --operation DESCRIBE --topic "${TOPIC_PATTERN}"
+
