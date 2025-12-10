@@ -1,0 +1,47 @@
+client
+=======
+
+security.protocol=SASL_SSL
+sasl.mechanism=SCRAM-SHA-512
+sasl.jaas.config=org.apache.kafka.common.security.scram.ScramLoginModule required \
+  username="<ADMIN_SCRAM_USER>" \
+  password="<ADMIN_SCRAM_PASSWORD>";
+===
+
+cat > ~/client.properties <<'EOF'
+security.protocol=SASL_SSL
+sasl.mechanism=SCRAM-SHA-512
+sasl.jaas.config=org.apache.kafka.common.security.scram.ScramLoginModule required \
+  username="<ADMIN_SCRAM_USER>" \
+  password="<ADMIN_SCRAM_PASSWORD>";
+# (If your MSK requires custom truststore, add ssl.truststore.location and ssl.truststore.password lines)
+EOF
+====
+
+
+
+execute
+=======
+~/kafka_2.13-3.6.0/bin/kafka-acls.sh \
+  --bootstrap-server <MSK_BOOTSTRAP> \
+  --command-config ~/client.properties \
+  --list
+===
+
+PEGA
+===
+
+# allow WRITE to topics (producers)
+~/kafka_2.13-3.6.0/bin/kafka-acls.sh --bootstrap-server <MSK_BOOTSTRAP> \
+  --command-config ~/client.properties \
+  --add --allow-principal "User:<PEGA_SCRAM_USER>" --operation WRITE --topic "<TOPIC_PATTERN>"
+
+# allow READ on topics and group (consumers)
+~/kafka_2.13-3.6.0/bin/kafka-acls.sh --bootstrap-server <MSK_BOOTSTRAP> \
+  --command-config ~/client.properties \
+  --add --allow-principal "User:<PEGA_SCRAM_USER>" --operation READ --topic "<TOPIC_PATTERN>" --group "<PEGA_CONSUMER_GROUP>"
+
+# allow DESCRIBE (metadata calls)
+~/kafka_2.13-3.6.0/bin/kafka-acls.sh --bootstrap-server <MSK_BOOTSTRAP> \
+  --command-config ~/client.properties \
+  --add --allow-principal "User:<PEGA_SCRAM_USER>" --operation DESCRIBE --topic "<TOPIC_PATTERN>"
