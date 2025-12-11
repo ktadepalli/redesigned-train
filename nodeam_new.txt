@@ -1,0 +1,70 @@
+# example variables you should define:
+# variable "account_id" { type = string }      # 88240444453
+# variable "aws_region" { type = string }      # eu-west-1
+# variable "pause_image_tag" { type = string, default = "3.10" }
+# variable "pause_image_repo" { type = string, default = "infra/pause" }
+
+cloudinit_pre_nodeadm = [
+  # 1) Write containerd mirror config
+  {
+    content_type = "text/cloud-config"
+    content      = <<-EOT
+      #cloud-config
+      write_files:
+        - path: /etc/containerd/config.toml.d/99-mirror.conf
+          owner: root:root
+          permissions: "0644"
+          content: |
+            [plugins."io.containerd.grpc.v1.cri".registry.mirrors."registry.k8s.io"]
+              endpoint = ["${var.account_id}.dkr.ecr.${var.aws_region}.amazonaws.com/infra"]
+            [plugins."io.containerd.grpc.v1.cri".registry.mirrors."602401143452.dkr.ecr.${var.aws_region}.amazonaws.com"]
+              endpoint = ["${var.account_id}.dkr.ecr.${var.aws_region}.amazonaws.com/infra"]
+    EOT
+  },
+
+  # 2) NodeConfig — set kubelet flags (pause image)
+  {
+    content_type = "application/node.eks.aws"
+    content      = <<-EOT
+      ---
+      apiVersion: node.eks.aws/v1alpha1
+      kind: NodeConfig
+      spec:
+        kubelet:
+          flags:
+            - "--pod-infra-container-image=${var.account_id}.dkr.ecr.${var.aws_region}.amazonaws.com/${var.pause_image_repo}:${var.pause_image_tag}"
+    EOT
+  },
+
+  # 3) Shell script: create folder, restart containerd, and ensure nodeadm is initialized
+  {
+    content_type = "text/x-shellscript"
+    content      = <<-EOT
+      #!/bin/bash
+      set -euo pipefail
+
+      echo "creating pega-logs folder"
+      mkdir -p /var/log/pega-logs
+      chmod 0777 /var/log/pega-logs
+      echo "pega-logs folder created"
+
+      # restart containerd so the new mirror file is loaded
+      if command -v systemctl >/dev/null 2>&1; then
+        echo "Restarting containerd to pick up mirror config"
+        systemctl daemon-reload || true
+        systemctl restart containerd || true
+      fi
+
+      # give containerd a short moment
+      sleep 2
+
+      # optionally re-run nodeadm init to ensure nodeadm picks up changes (safe & idempotent)
+      if command -v nodeadm >/dev/null 2>&1; then
+        echo "Running nodeadm init (idempotent) to apply NodeConfig"
+        nodeadm init || true
+      fi
+
+      echo "pre-nodeadm tasks complete"
+    EOT
+  }
+]
