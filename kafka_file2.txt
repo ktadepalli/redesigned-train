@@ -1,0 +1,116 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# ---------------------------
+# CONFIG — edit these values
+# ---------------------------
+BOOTSTRAP_SERVERS="<BROKER:PORT>"        # e.g. b-1.mskxxxx:9098,b-2.mskxxxx:9098
+ADMIN_CONFIG="./config/admin.properties" # path to your admin client properties (SASL/SSL etc)
+PRINCIPAL="User:pega"                    # Kafka principal for Pega (change if different)
+KAFKA_ACLS="./bin/kafka-acls.sh"         # path to your kafka-acls.sh
+# ---------------------------
+
+# sanity checks
+if [ ! -f "${ADMIN_CONFIG}" ]; then
+  echo "ERROR: admin config file not found at ${ADMIN_CONFIG}"
+  exit 2
+fi
+if [ ! -x "${KAFKA_ACLS}" ]; then
+  echo "ERROR: kafka-acls.sh not found or not executable at ${KAFKA_ACLS}"
+  exit 2
+fi
+
+# ---------------------------
+# 1) Topic ACLs — A..Z, a..z, 0..9
+# ---------------------------
+echo "Creating topic ACLs for A..Z and a..z prefixes..."
+for prefix in {A..Z} {a..z}; do
+  echo "Adding ACL for topic prefix: ${prefix}*"
+  "${KAFKA_ACLS}" \
+    --bootstrap-server "${BOOTSTRAP_SERVERS}" \
+    --command-config "${ADMIN_CONFIG}" \
+    --add \
+    --allow-principal "${PRINCIPAL}" \
+    --operation All \
+    --topic "${prefix}" \
+    --resource-pattern-type PREFIXED
+done
+
+echo "Adding topic ACLs for digits 0..9..."
+for digit in {0..9}; do
+  echo "Adding ACL for topic prefix: ${digit}*"
+  "${KAFKA_ACLS}" \
+    --bootstrap-server "${BOOTSTRAP_SERVERS}" \
+    --command-config "${ADMIN_CONFIG}" \
+    --add \
+    --allow-principal "${PRINCIPAL}" \
+    --operation All \
+    --topic "${digit}" \
+    --resource-pattern-type PREFIXED
+done
+
+# ---------------------------
+# 2) Consumer-group ACLs — curated Pega prefixes (recommended)
+# ---------------------------
+echo "Creating consumer-group ACLs for known Pega prefixes..."
+GROUP_PREFIXES=(
+  "DATAFLOW"
+  "Stream"
+  "py"
+  "px"
+  "SRS"
+  "pega"
+  "DQ"
+  "Notifications"
+  "RealTimeDataGrid"
+  "RuleUsage"
+  "Batch"
+  "Index"
+  "DecisionDataStore"
+  "DataSet"
+)
+
+for prefix in "${GROUP_PREFIXES[@]}"; do
+  echo "Adding GROUP ACL for prefix: ${prefix}*"
+  "${KAFKA_ACLS}" \
+    --bootstrap-server "${BOOTSTRAP_SERVERS}" \
+    --command-config "${ADMIN_CONFIG}" \
+    --add \
+    --allow-principal "${PRINCIPAL}" \
+    --operation All \
+    --group "${prefix}" \
+    --resource-pattern-type PREFIXED
+done
+
+# ---------------------------
+# Optional: If you prefer a universal fallback for groups, uncomment the A..Z/a..z approach below
+# (WARNING: very permissive — allows the principal to use any group starting with those letters)
+# ---------------------------
+: <<'OPTIONAL_GROUP_FALLBACK'
+echo "Adding GROUP ACLs A..Z and a..z (OPTIONAL fallback — very permissive)..."
+for prefix in {A..Z} {a..z}; do
+  echo "Adding GROUP ACL for prefix: ${prefix}*"
+  "${KAFKA_ACLS}" \
+    --bootstrap-server "${BOOTSTRAP_SERVERS}" \
+    --command-config "${ADMIN_CONFIG}" \
+    --add \
+    --allow-principal "${PRINCIPAL}" \
+    --operation All \
+    --group "${prefix}" \
+    --resource-pattern-type PREFIXED
+done
+OPTIONAL_GROUP_FALLBACK
+
+# ---------------------------
+# Done & Verification
+# ---------------------------
+echo "Done adding ACLs."
+
+echo
+echo "Sample verification (first 200 lines):"
+"${KAFKA_ACLS}" --bootstrap-server "${BOOTSTRAP_SERVERS}" --command-config "${ADMIN_CONFIG}" --list | sed -n '1,200p'
+
+echo
+echo "To check a specific prefix was applied, e.g.:"
+echo "  ${KAFKA_ACLS} --bootstrap-server ${BOOTSTRAP_SERVERS} --command-config ${ADMIN_CONFIG} --list --topic A"
+echo "  ${KAFKA_ACLS} --bootstrap-server ${BOOTSTRAP_SERVERS} --command-config ${ADMIN_CONFIG} --list --group DATAFLOW"
