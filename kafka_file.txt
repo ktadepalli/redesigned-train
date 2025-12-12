@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# ---------------------------
+# CONFIG — edit these values
+# ---------------------------
+BOOTSTRAP_SERVERS="<BROKER:PORT>"        # e.g. b-1.mskxxxx:9098,b-2.mskxxxx:9098
+ADMIN_CONFIG="./config/admin.properties" # path to your admin client properties (SASL/SSL etc)
+PRINCIPAL="User:pega"                    # Kafka principal for Pega (change if different)
+KAFKA_ACLS="./bin/kafka-acls.sh"         # path to your kafka-acls.sh
+# ---------------------------
+
+# sanity checks
+if [ ! -f "${ADMIN_CONFIG}" ]; then
+  echo "ERROR: admin config file not found at ${ADMIN_CONFIG}"
+  exit 2
+fi
+if [ ! -x "${KAFKA_ACLS}" ]; then
+  echo "ERROR: kafka-acls.sh not found or not executable at ${KAFKA_ACLS}"
+  exit 2
+fi
+
+# create ACL for topic prefixes A..Z and a..z
+echo "Creating topic ACLs for A..Z and a..z prefixes..."
+for prefix in {A..Z} {a..z}; do
+  echo "Adding ACL for topic prefix: ${prefix}*"
+  "${KAFKA_ACLS}" \
+    --bootstrap-server "${BOOTSTRAP_SERVERS}" \
+    --command-config "${ADMIN_CONFIG}" \
+    --add \
+    --allow-principal "${PRINCIPAL}" \
+    --operation All \
+    --topic "${prefix}" \
+    --resource-pattern-type PREFIXED
+done
+
+# Optionally add numeric prefixes if topics could start with digits
+# for d in {0..9}; do ... ; done
+echo "Adding topic ACLs for digits 0..9..."
+for digit in {0..9}; do
+  "${KAFKA_ACLS}" \
+    --bootstrap-server "${BOOTSTRAP_SERVERS}" \
+    --command-config "${ADMIN_CONFIG}" \
+    --add \
+    --allow-principal "${PRINCIPAL}" \
+    --operation All \
+    --topic "${digit}" \
+    --resource-pattern-type PREFIXED
+done
+
+# Add consumer-group ACL using PREFIXED with empty name (works for MSK groups)
+echo "Adding consumer-group ACL (prefix '') for Pega (allows all groups created by Pega)..."
+"${KAFKA_ACLS}" \
+  --bootstrap-server "${BOOTSTRAP_SERVERS}" \
+  --command-config "${ADMIN_CONFIG}" \
+  --add \
+  --allow-principal "${PRINCIPAL}" \
+  --operation All \
+  --group '' \
+  --resource-pattern-type PREFIXED
+
+echo "Done. Now list and verify ACLs."
+
+# Verification (list a sample of ACLs)
+"${KAFKA_ACLS}" --bootstrap-server "${BOOTSTRAP_SERVERS}" --command-config "${ADMIN_CONFIG}" --list | sed -n '1,200p'
