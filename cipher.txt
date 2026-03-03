@@ -45,3 +45,33 @@ SSLParameters params = context.getSupportedSSLParameters();
 for (String cipher : params.getCipherSuites()) {
     System.out.println(cipher);
 }
+=========================
+
+#!/bin/bash
+
+# Create Java program to list supported and default client ciphers
+cat << 'EOF' > /tmp/ListCiphers.java
+import javax.net.ssl.*;
+
+public class ListCiphers {
+    public static void main(String[] args) throws Exception {
+        SSLContext context = SSLContext.getDefault();
+
+        System.out.println("===== SUPPORTED CIPHERS =====");
+        for (String cipher : context.getSupportedSSLParameters().getCipherSuites()) {
+            System.out.println(cipher);
+        }
+
+        System.out.println("\n===== DEFAULT ENABLED CLIENT CIPHERS =====");
+        for (String cipher : context.getDefaultSSLParameters().getCipherSuites()) {
+            System.out.println(cipher);
+        }
+    }
+}
+EOF
+
+# Compile
+javac /tmp/ListCiphers.java
+
+# Run
+java -cp /tmp ListCiphers
