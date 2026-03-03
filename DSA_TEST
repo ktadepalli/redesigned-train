@@ -1,0 +1,31 @@
+import paramiko
+
+# SFTP server details
+hostname = "sftp.example.com"
+port = 22
+username = "your_username"
+private_key_path = "/path/to/your/dsa_private_key"
+
+try:
+    # Load DSA private key
+    key = paramiko.DSSKey.from_private_key_file(private_key_path)
+
+    # Create SSH client
+    transport = paramiko.Transport((hostname, port))
+    transport.connect(username=username, pkey=key)
+
+    # Open SFTP session
+    sftp = paramiko.SFTPClient.from_transport(transport)
+
+    print("Connected successfully!")
+
+    # Example: List files in remote directory
+    for filename in sftp.listdir('.'):
+        print(filename)
+
+    # Close connection
+    sftp.close()
+    transport.close()
+
+except Exception as e:
+    print("Connection failed:", str(e))
