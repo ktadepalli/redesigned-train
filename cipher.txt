@@ -1,0 +1,38 @@
+Dear Team
+
+We are currently experiencing an SSL handshake failure when connecting to the endpoint hpsbo-connect-prod.hk.hsbc from our application after upgrading our JVM minor patch version.
+
+Problem Statement:
+Post-upgrade, the connection fails with the following error:
+
+javax.net.ssl.SSLHandshakeException: Received fatal alert: handshake_failure
+
+Through detailed TLS debugging and OpenSSL validation, we observed the following:
+
+TLS 1.2 negotiation is successful.
+
+On our previous Java version (11.0.29), the handshake succeeded using the cipher suite:
+TLS_RSA_WITH_AES_256_CBC_SHA256
+
+After upgrading to Java 11.0.30, static RSA key-exchange cipher suites (TLS_RSA_*) are no longer offered by default.
+
+The server immediately terminates the handshake when no common cipher suite is found.
+
+We would like to request your assistance in:
+
+Confirming the full list of cipher suites currently supported on the endpoint.
+
+Verifying whether modern forward-secrecy cipher suites as below are enabled on your server.:
+
+TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
+
+TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+
+
+Enable ECDHE-based cipher suites if they are not currently configured.
+
+Our objective is to ensure secure connectivity using modern TLS standards without relying on deprecated static RSA key-exchange ciphers.
+
+Please let us know if you require any additional logs, ClientHello captures, or diagnostic details from our side.
+
+openssl s_client -connect hpsbo-connect-prod.hk.hsbc:443 -tls1_2 -cipher ECDHE
