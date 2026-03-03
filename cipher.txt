@@ -36,3 +36,12 @@ Our objective is to ensure secure connectivity using modern TLS standards withou
 Please let us know if you require any additional logs, ClientHello captures, or diagnostic details from our side.
 
 openssl s_client -connect hpsbo-connect-prod.hk.hsbc:443 -tls1_2 -cipher ECDHE
+
+import javax.net.ssl.*;
+
+SSLContext context = SSLContext.getDefault();
+SSLParameters params = context.getSupportedSSLParameters();
+
+for (String cipher : params.getCipherSuites()) {
+    System.out.println(cipher);
+}
