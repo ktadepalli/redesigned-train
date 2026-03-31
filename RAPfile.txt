@@ -47,3 +47,17 @@ spec:
           hostPath:
             path: /data/pega-export   # 👈 change this path on node
             type: DirectoryOrCreate
+---
+cat <<EOF > /tmp/prpcUtils.properties
+pega.jdbc.driver.class=org.postgresql.Driver
+pega.jdbc.driver.jar=/opt/pega/jdbc/postgresql.jar
+pega.database.type=postgres
+pega.jdbc.url=jdbc:postgresql://<RDS-ENDPOINT>:5432/<DB-NAME>
+pega.jdbc.username=<DB-USERNAME>
+pega.jdbc.password=<DB-PASSWORD>
+
+rulesetName=TESTDEPLOYMENTTOOL
+rulesetVersion=01-01-01
+
+outputArchive=/tmp/TestDeploymentTool.jar
+EOF
